@@ -1,9 +1,13 @@
 /* ============================================================
-   MYCELIA — canonical game engine (no DOM).
-   Single source of truth for both the playable UI (index.html)
-   and the headless meta simulator (sim.js).
-   Instance-based: createGame() returns an isolated match, so the
-   simulator can run thousands concurrently with seeded RNG.
+   MYCELIA — ecology engine (v2). No combat. Shared tiles.
+   You steer a chaotic multi-species web toward HOMEOSTASIS: the
+   goal is to reach a stable, self-sustaining equilibrium (the
+   "stability lock") before the season ends, without boom-busting.
+   Dominance (who is the biggest node of the stable web) is an
+   OPTIONAL competitive lens over the same simulation.
+
+   Single source of truth for the UI (index.html) and the homeostasis
+   simulator (sim.js). Instance-based + seedable RNG.
    ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
@@ -11,358 +15,358 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
 
-// ---- Substrates: nutrient richness + how tough they are to digest (needs Diet) ----
-const SUB = {
-  soil:   {name:'Soil',   color:'#3f5233', nutrient:3, tough:0},
-  litter: {name:'Litter', color:'#4a3f2a', nutrient:4, tough:1},
-  dung:   {name:'Dung',   color:'#7a6a3a', nutrient:6, tough:1},
-  wood:   {name:'Wood',   color:'#6b4a2a', nutrient:8, tough:3},
-  barren: {name:'Barren', color:'#222222', nutrient:0, tough:0},
+// ---- tunables (the dials we move to hit "moderate tension") ----
+const T = {
+  EXTRACT:   0.28,  // max fraction of a pool harvestable per cycle
+  MAINT:     0.17,  // upkeep per unit biomass (starvation lever)
+  GROWTH:    0.55,  // how fast net energy becomes biomass
+  ENERGY_TAX:0.30,  // fraction of gross harvest banked as spendable energy
+  REGEN:     1.0,   // global multiplier on per-resource regen
+  SEED_BIO:  1.6,   // biomass a new seed establishes
+  MIN_ALIVE: 1.5,   // below this total biomass a colony is functionally dead
+  SIZE_MIN:  18,    // a biostasis must be a real web this big — you must GROW to win
+  VOL_REF:   0.20,  // volatility (stdev/mean) that scores as "unstable"
+  WIN_WINDOW:5,     // cycles of history used for volatility
+  LOCK:      0.80,  // homeostasis-meter level that counts as "in balance"
+  LOCK_HOLD: 4,     // cycles you must hold it to achieve biostasis
+  SEASON:    45,    // hard cycle cap (≈ match length budget)
+  METER_EASE:0.28,  // how fast the meter tracks current health
+  CRASH_DROP:0.14,  // a biomass drop this large (fraction) snaps the meter down
 };
 
-// ---- Genome: ten traits (0..5), grouped by the strategic route they serve ----
+// ---- resources: the pools colonies decompose. tough = Diet gate. ----
+// regen is now an INTRINSIC (logistic) growth rate: a pool regrows fastest at
+// half-capacity and not at all near zero — so over-extraction can collapse it for good.
+const RES = {
+  wood:  {name:'Wood',   color:'#6b4a2a', regen:0.55, tough:3},
+  dung:  {name:'Dung',   color:'#7a6a3a', regen:0.95, tough:1},
+  litter:{name:'Litter', color:'#4a3f2a', regen:0.80, tough:1},
+  soil:  {name:'Soil',   color:'#3f5233', regen:0.60, tough:0},   // shared, weak, contested
+};
+const RES_KEYS = Object.keys(RES);
+
+// ---- ten traits (0..5), grouped by the route they serve ----
 const TRAITS = [
-  {key:'mycelium',    label:'Mycelium',    desc:'Cheaper spread + more growth per cycle', tag:'war'},
-  {key:'diet',        label:'Diet',        desc:'Extract more nutrient; digest tough wood', tag:'war'},
-  {key:'toxicity',    label:'Toxicity',    desc:'Defends tiles; but foragers avoid you', tag:'def'},
-  {key:'edibility',   label:'Edibility',   desc:'Foragers eat & spread you far — grazed harder', tag:'def'},
-  {key:'mimicry',     label:'Mimicry',     desc:'Lookalike: picked while toxic; cheaper to overtake', tag:'trick'},
-  {key:'psychotropic',label:'Psychotropics',desc:'Manipulated grazers become spore carriers', tag:'trick'},
-  {key:'symbiosis',   label:'Symbiosis',   desc:'Bond with wood hosts: passive food, ungrazable', tag:'sym'},
+  {key:'mycelium',    label:'Mycelium',    desc:'Seed reach & more seeds per cycle', tag:'grow'},
+  {key:'diet',        label:'Diet',        desc:'Extraction efficiency + eat beyond your niche', tag:'grow'},
+  {key:'toxicity',    label:'Toxicity',    desc:'Repels grazers; but keeps foragers away', tag:'def'},
+  {key:'edibility',   label:'Edibility',   desc:'Foragers seek & disperse you (grazed harder)', tag:'def'},
+  {key:'mimicry',     label:'Mimicry',     desc:'Hijack a RIVAL faction’s foragers to spread', tag:'trick'},
+  {key:'psychotropic',label:'Psychotropics',desc:'Manipulated dispersers; cultivation appeal', tag:'trick'},
+  {key:'symbiosis',   label:'Symbiosis',   desc:'Build allied web: stable food, anti-crash', tag:'sym'},
   {key:'gills',       label:'Gills',       desc:'More spores per fruiting', tag:'repro'},
-  {key:'spores',      label:'Spores',      desc:'Spore germination range & success', tag:'repro'},
-  {key:'fruitcycle',  label:'Fruit cycle', desc:'Fruit sooner (shorter interval)', tag:'repro'},
+  {key:'spores',      label:'Spores',      desc:'Dispersal range & germination', tag:'repro'},
+  {key:'restraint',   label:'Restraint',   desc:'Lower upkeep & smoother growth (stability)', tag:'sym'},
 ];
-const upCost = lvl => 8 + lvl*7;
+const upCost = lvl => 6 + lvl*5;
 
-// ---- Factions: the three major types, defined by their EFFECT ON PEOPLE ----
+// ---- factions: a keystone fungus + its niche + allied web ----
 const FACTIONS = {
-  amanita:{ name:'Amanita', tag:'The Deceiver', color:'#e0524d',
-    effect:'Delirium & poison — beautiful and iconic, so admirers still pick you.',
-    bias:{toxicity:2,mimicry:2,gills:1}, sig:'deceiver' },
-  psilocybe:{ name:'Psilocybe', tag:'The Prophet', color:'#c47cff',
-    effect:'Psychedelic — humans cultivate and protect you, planting you far and wide.',
-    bias:{psychotropic:2,spores:2,mycelium:1}, sig:'cultivated' },
-  boletus:{ name:'Boletus', tag:'The Feast', color:'#e8c34a',
-    effect:'Choice edible — foragers eat and carry you everywhere, but you lose fruit bodies.',
-    bias:{edibility:2,diet:2,gills:1}, sig:'choice' },
+  boletus:{ name:'Boletus', tag:'The Feast', color:'#e8c34a', niche:'wood',
+    effect:'Choice edible — foragers carry you far.', allies:'foragers, forest hosts' },
+  psilocybe:{ name:'Psilocybe', tag:'The Prophet', color:'#c47cff', niche:'dung',
+    effect:'Psychedelic — humans cultivate & protect you.', allies:'cultivators, grazers' },
+  amanita:{ name:'Amanita', tag:'The Deceiver', color:'#e0524d', niche:'litter',
+    effect:'Iconic & toxic — admired, mimicked, feared.', allies:'host trees, deceived foragers' },
 };
+const FKEYS = Object.keys(FACTIONS);
 
-// ---- seedable RNG (mulberry32) so the simulator is reproducible ----
 function mulberry32(a){ return function(){
   a|=0; a=a+0x6D2B79F5|0;
   let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
   return ((t^t>>>14)>>>0)/4294967296;
 };}
+const clamp01=x=>x<0?0:x>1?1:x;
+const mean=a=>a.reduce((s,v)=>s+v,0)/(a.length||1);
+function stdev(a){ if(a.length<2) return 0; const m=mean(a);
+  return Math.sqrt(mean(a.map(v=>(v-m)*(v-m)))); }
 
 // ============================================================
 //  GAME INSTANCE
 // ============================================================
 function createGame(opts={}){
-  const COLS=opts.cols||16, ROWS=opts.rows||12;
-  const rng = opts.rng || Math.random;
-  const logfn = opts.log || (()=>{});
-  const factions = opts.factions || {you:'boletus', rival:'amanita'};
+  const COLS=opts.cols||14, ROWS=opts.rows||11;
+  const rng=opts.rng||Math.random;
+  const logfn=opts.log||(()=>{});
+  const scoreMode=opts.scoreMode!==false;          // dominance lens on by default
+  // which factions are in play (default all three, one colony each)
+  const facs=opts.factions||FKEYS.slice();
+  const playerFaction=opts.playerFaction||facs[0];
 
-  const g = { COLS, ROWS, rng, turn:1, over:false, winner:null, grid:[], you:null, rival:null, orders:[] };
+  const g={ COLS, ROWS, rng, turn:1, over:false, winner:null, reason:null,
+            season:T.SEASON, grid:[], colonies:[], scoreMode };
   const idx=(x,y)=>y*COLS+x;
   const inB=(x,y)=>x>=0&&y>=0&&x<COLS&&y<ROWS;
 
-  function mkColony(isYou, key){
-    const c={ isYou, faction:key, biomass:12, fruitTimer:0, growthLeft:0,
+  function mkColony(i,key){
+    return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction,
       genome:{mycelium:1,diet:1,toxicity:0,edibility:0,mimicry:0,psychotropic:0,
-              symbiosis:0,gills:1,spores:1,fruitcycle:0} };
-    const bias=FACTIONS[key].bias; for(const k in bias) c.genome[k]+=bias[k];
-    return c;
+              symbiosis:0,gills:1,spores:1,restraint:0},
+      energy:10, growthLeft:0, hist:[], meter:0, hold:0, biostasis:false, alive:true };
   }
-  function seed(col,x,y){ const c=g.grid[idx(x,y)];
-    if(c.sub==='barren'){c.sub='soil';c.nutrient=SUB.soil.nutrient;}
-    c.owner=col; c.mass=3; }
 
   function genMap(){
     g.grid=[];
-    const types=['soil','soil','litter','dung','wood','barren'];
     for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
-      const n=(Math.sin(x*0.7)+Math.cos(y*0.9)+Math.sin((x+y)*0.5))*1.3+3;
-      let t=types[Math.max(0,Math.min(types.length-1,Math.round(n)))];
-      if(rng()<0.10) t='barren';
-      g.grid.push({x,y,sub:t,owner:null,mass:0,nutrient:SUB[t].nutrient,symbiotic:false});
+      // a dominant substrate per tile, clustered by cheap noise
+      const n=(Math.sin(x*0.6)+Math.cos(y*0.8)+Math.sin((x+y)*0.5))*1.2+2;
+      const kinds=['soil','litter','dung','wood','soil','litter'];
+      const dom=kinds[Math.max(0,Math.min(kinds.length-1,Math.round(n)))];
+      const cap={}, pool={};
+      for(const r of RES_KEYS){ const base = r===dom?9:(r==='soil'?3:1);
+        cap[r]=base; pool[r]=base*(0.7+rng()*0.3); }
+      g.grid.push({x,y,dom,cap,pool,bio:facs.map(()=>0)});
     }
-    g.you=mkColony(true,factions.you); g.rival=mkColony(false,factions.rival);
-    seed(g.you,1,ROWS-2); seed(g.rival,COLS-2,1);
+    g.colonies=facs.map((k,i)=>mkColony(i,k));
+    // seed each colony onto a tile rich in its niche, spread apart
+    const spots={wood:[2,ROWS-2],dung:[COLS-3,ROWS-3],litter:[Math.floor(COLS/2),1],soil:[2,2]};
+    g.colonies.forEach(c=>{ const [sx,sy]=spots[c.niche]||[2,2];
+      const t=bestNearby(sx,sy,c.niche); t.bio[c.i]=T.SEED_BIO*2; });
     beginTurn();
+  }
+  function bestNearby(x,y,res){ let best=g.grid[idx(clampX(x),clampY(y))], bv=-1;
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){ const nx=clampX(x+dx),ny=clampY(y+dy);
+      const t=g.grid[idx(nx,ny)]; if(t.cap[res]>bv){bv=t.cap[res];best=t;} } return best; }
+  const clampX=x=>Math.max(0,Math.min(COLS-1,x)), clampY=y=>Math.max(0,Math.min(ROWS-1,y));
+
+  // ---- niche / diet ----
+  // efficiency at extracting a resource: strong in your niche, weak on shared soil,
+  // and only able to touch other niches if Diet is high enough (generalist).
+  function dietEff(col,res){
+    const g_=col.genome;
+    if(res===col.niche) return 0.5 + g_.diet*0.09 + g_.symbiosis*0.04;
+    if(res==='soil')    return 0.22 + g_.diet*0.05;
+    if(g_.diet >= RES[res].tough) return 0.10 + g_.diet*0.04;   // generalist reach
+    return 0;                                                    // can't digest it
   }
 
   // ---- geometry ----
-  const ownedTiles=col=>g.grid.filter(t=>t.owner===col);
-  // during planning a colony may chain-grow off tiles it has provisionally CLAIMED this turn
-  const heldBy=col=>g.grid.filter(t=>t.owner===col||t.claim===col);
-  function neighbors(t,range){ const out=[];
-    for(let dy=-range;dy<=range;dy++)for(let dx=-range;dx<=range;dx++){
-      if(!dx&&!dy)continue; if(Math.abs(dx)+Math.abs(dy)>range)continue;
-      if(inB(t.x+dx,t.y+dy)) out.push(g.grid[idx(t.x+dx,t.y+dy)]); }
+  const presence=col=>g.grid.filter(t=>t.bio[col.i]>0);
+  const totalBio=col=>g.grid.reduce((s,t)=>s+t.bio[col.i],0);
+  function neighbors(t){ const out=[];
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) if(inB(t.x+dx,t.y+dy)) out.push(g.grid[idx(t.x+dx,t.y+dy)]);
     return out; }
-  function frontier(col){
-    const range=1+Math.floor(col.genome.mycelium/3), set=new Set();
-    for(const t of heldBy(col)) for(const n of neighbors(t,range))
-      if(n.owner!==col && n.claim!==col) set.add(n);
+  function reachable(col){
+    const range=1, set=new Set();
+    for(const t of presence(col)) for(const n of neighbors(t))
+      if(n.bio[col.i]<=0 && edible(col,n)) set.add(n);
     return [...set];
   }
-  function spreadCost(col,t){
-    const base=2+SUB[t.sub].tough;
-    const contested=t.owner&&t.owner!==col ? Math.max(0,4-col.genome.mimicry) : 0;
-    return Math.max(1, Math.round(base+contested-col.genome.mycelium*0.4));
-  }
-  const canDigest=(col,t)=>col.genome.diet>=SUB[t.sub].tough-1;
-  function maxGrowth(col){return 2+Math.floor(col.genome.mycelium*1.3)}
+  const edible=(col,t)=> RES_KEYS.some(r=>t.pool[r]>0.5 && dietEff(col,r)>0);
+  function maxSeeds(col){ return 1+Math.floor(col.genome.mycelium*0.8); }
+  function seedCost(col,t){ return Math.max(2, Math.round(4 - col.genome.mycelium*0.4)); }
 
-  // ---- actions (identical for human and AI) ----
-  // trySpread now QUEUES a provisional claim; ownership is decided simultaneously at
-  // resolve time, so neither side sees the other's moves — no first-mover advantage.
-  function trySpread(col,t){
-    if(t.owner===col||t.claim===col) return false;
-    if(col.growthLeft<=0||!canDigest(col,t)) return false;
-    const cost=spreadCost(col,t); if(col.biomass<cost) return false;
-    col.biomass-=cost; col.growthLeft--;
-    t.claim=col; g.orders.push({t,col,cost}); return true;   // provisional — resolved later
-  }
-  // push strength when two colonies claim the same tile in the same cycle
-  const pushForce=(col,t)=> col.genome.mycelium + t.mass*0.5 + g.rng()*1.5
-                          + (t.owner===col?2:0);
-  function resolveOrders(){
-    const byTile=new Map();
-    for(const o of g.orders){ const k=idx(o.t.x,o.t.y);
-      if(!byTile.has(k)) byTile.set(k,[]); byTile.get(k).push(o); }
-    for(const [,claims] of byTile){
-      const t=claims[0].t;
-      let win=claims[0].col;
-      if(claims.length>1){                       // contested: strongest push takes it (rest wasted)
-        win=claims.reduce((a,b)=> pushForce(b.col,t)>pushForce(a.col,t)?b:a).col;
-        logfn(`${who(win)} won a contested tile`);
-      } else if(t.owner&&t.owner!==win){
-        logfn(`${who(win)} overtook ${who(t.owner)}'s tile`);
-      }
-      t.owner=win; t.mass=Math.max(t.mass,2);
-    }
-    for(const t of g.grid) t.claim=null;
-    g.orders=[];
+  // ---- actions ----
+  function seed(col,t){
+    if(t.bio[col.i]>0 || col.growthLeft<=0 || !edible(col,t)) return false;
+    const c=seedCost(col,t); if(col.energy<c) return false;
+    col.energy-=c; col.growthLeft--;
+    t.bio[col.i]=T.SEED_BIO; return true;
   }
   function upgrade(col,key){
     const lvl=col.genome[key]; if(lvl>=5) return false;
-    const c=upCost(lvl); if(col.biomass<c) return false;
-    col.biomass-=c; col.genome[key]++; return true;
+    const c=upCost(lvl); if(col.energy<c) return false;
+    col.energy-=c; col.genome[key]++; return true;
   }
-  const who=c=>FACTIONS[c.faction].name;
-  const sigOf=c=>FACTIONS[c.faction].sig;
 
-  // ---- world resolution ----
-  function symbiose(col){ if(col.genome.symbiosis<1) return;
-    for(const t of ownedTiles(col)) if(t.sub==='wood'&&!t.symbiotic){ t.symbiotic=true;
-      if(col.isYou) logfn('🌳 Mycorrhizal bond formed — passive food, ungrazable'); } }
-
-  function metabolize(col){
-    let gain=0;
-    for(const t of ownedTiles(col)){
-      if(t.symbiotic){ gain+=2+col.genome.symbiosis*0.8; t.mass=Math.min(5,t.mass+0.4); continue; }
-      const ex=t.nutrient>0?Math.min(t.nutrient,1+col.genome.diet*0.6):0;
-      t.nutrient=Math.max(0,+(t.nutrient-ex*0.15).toFixed(2));
-      gain+=ex*(t.nutrient>0?1:0.2); t.mass=Math.min(5,t.mass+0.3);
+  // ---- the ecology: order-independent resource competition + growth ----
+  function ecology(){
+    const gainTile=g.grid.map(()=>g.colonies.map(()=>0));
+    for(let ti=0;ti<g.grid.length;ti++){
+      const t=g.grid[ti];
+      for(const r of RES_KEYS){
+        if(t.pool[r]<=0) continue;
+        const w=g.colonies.map(c=> t.bio[c.i]>0 ? t.bio[c.i]*dietEff(c,r) : 0);
+        const sw=w.reduce((s,v)=>s+v,0); if(sw<=0) continue;
+        const take=Math.min(t.pool[r], t.pool[r]*T.EXTRACT + sw*0.05);
+        for(const c of g.colonies){ if(w[c.i]<=0) continue;
+          gainTile[ti][c.i]+= take*w[c.i]/sw; }
+        t.pool[r]-=take;
+      }
+      // LOGISTIC regrowth: fast at mid-stock, ~zero near empty (overexploitation collapse).
+      // A tiny floor lets a fully-crashed pool slowly reseed, so collapse is punishing, not permanent.
+      for(const r of RES_KEYS){ const p=t.pool[r], k=t.cap[r];
+        t.pool[r]=Math.min(k, p + RES[r].regen*T.REGEN*p*(1-p/k) + k*0.004); }
     }
-    const chem=(col.genome.toxicity+col.genome.psychotropic)*0.5;
-    const territory=ownedTiles(col).length*0.28;
-    col.biomass=Math.max(0,+(col.biomass+gain-chem-territory).toFixed(1));
-  }
-
-  function grazers(col){
-    const tiles=ownedTiles(col); if(tiles.length<3) return;
-    const attacks=1+Math.floor(tiles.length/10);
-    for(let i=0;i<attacks;i++){
-      const t=tiles[Math.floor(rng()*tiles.length)];
-      if(!t||t.owner!==col||t.symbiotic) continue;
-      const defend=Math.max(0,col.genome.toxicity*0.22-col.genome.edibility*0.15);
-      if(rng()<defend){
-        if(col.genome.psychotropic>0&&rng()<col.genome.psychotropic*0.25){ disperse(col,1,true);
-          if(col.isYou) logfn('🦋 A tripping grazer flew off carrying your spores'); }
-        else if(col.isYou) logfn('☠️ Toxins repelled a grazer');
-      } else { t.mass-=2; if(t.mass<=0){ t.owner=null; t.mass=0;
-        if(col.isYou) logfn('🐛 Grazers cleared one of your tiles'); } }
+    // grow / starve biomass; bank spendable energy
+    for(let ti=0;ti<g.grid.length;ti++){ const t=g.grid[ti];
+      for(const c of g.colonies){ const gross=gainTile[ti][c.i]; if(t.bio[c.i]<=0&&gross<=0) continue;
+        const maint=t.bio[c.i]*(T.MAINT - c.genome.restraint*0.012);
+        const net=gross*(1-T.ENERGY_TAX) - maint;
+        c.energy += gross*T.ENERGY_TAX;
+        t.bio[c.i]=Math.max(0, t.bio[c.i] + net*(T.GROWTH + c.genome.restraint*0.03));
+        if(t.bio[c.i]<0.05) t.bio[c.i]=0;
+      }
     }
   }
 
-  // Foragers = the animal/human dispersal vector (edibility + deception).
-  function foragers(col){
-    const gm=col.genome, s=sigOf(col);
-    const disguise=gm.mimicry+(s==='deceiver'?1:0);
-    const draw=s==='cultivated'?gm.psychotropic:0;
-    const appeal=gm.edibility+disguise+draw;
-    if(appeal<=0) return;
-    if(gm.toxicity>0&&disguise<gm.toxicity&&s!=='cultivated') return; // obvious poison, avoided
-    if(rng()>0.22+appeal*0.12) return;
-    const tiles=ownedTiles(col).filter(t=>!t.symbiotic); if(!tiles.length) return;
-    const t=tiles[Math.floor(rng()*tiles.length)];
-    const carried=2+Math.round(gm.spores*0.8)+(s==='choice'?1:0);
-    disperse(col,carried,true);
-    const kept=s==='cultivated'||(gm.toxicity>0&&disguise>=gm.toxicity);
-    if(kept){ if(col.isYou) logfn(`${s==='cultivated'?'🧑‍🌾 Cultivated':'🎭 Lookalike taken'} — ${carried} spores planted far`); }
-    else { t.owner=null; t.mass=0; if(col.isYou) logfn(`🧺 Eaten & carried — ${carried} spores flung, 1 tile lost`); }
-  }
-
-  function fruiting(col){
-    col.fruitTimer++;
-    const interval=Math.max(2,6-col.genome.fruitcycle);
-    if(col.fruitTimer<interval) return;
-    col.fruitTimer=0;
-    const spores=col.genome.gills+col.genome.spores; if(spores<=0) return;
-    disperse(col,Math.max(1,Math.round(spores/2)));
-    if(col.isYou) logfn(`🍄 Fruited — flung ${Math.max(1,Math.round(spores/2))} spores`);
-  }
-
-  function disperse(col,n,fromGrazer=false){
-    const anchors=ownedTiles(col); if(!anchors.length) return;
-    const range=3+col.genome.spores*2+(fromGrazer?6:0);
-    for(let i=0;i<n;i++){
-      const a=anchors[Math.floor(rng()*anchors.length)];
-      const nx=a.x+Math.round((rng()*2-1)*range), ny=a.y+Math.round((rng()*2-1)*range);
-      if(!inB(nx,ny)) continue;
-      const t=g.grid[idx(nx,ny)];
-      if(t.owner||t.sub==='barren'||!canDigest(col,t)) continue;
-      if(rng()<0.35+col.genome.spores*0.1){ t.owner=col; t.mass=2; }
+  // grazers: stochastic biomass loss, softened by Toxicity, worsened by Edibility
+  function grazers(){
+    for(const c of g.colonies){ const tiles=presence(c); if(tiles.length<2) continue;
+      const hits=1+Math.floor(tiles.length/12);
+      const risk=Math.max(0, 0.5 + c.genome.edibility*0.12 - c.genome.toxicity*0.15);
+      for(let i=0;i<hits;i++){ if(rng()>risk) continue;
+        const t=tiles[Math.floor(rng()*tiles.length)]; if(t) t.bio[c.i]*=0.7; }
     }
   }
 
-  // ---- win / lose ----
-  const viable=()=>g.grid.filter(t=>t.sub!=='barren').length;
-  function checkWin(){
-    const y=ownedTiles(g.you).length, r=ownedTiles(g.rival).length, v=viable();
-    if(y===0)      return finish('rival','collapse');
-    if(r===0)      return finish('you','dominance');
-    if(y>v*0.5)    return finish('you','bloom');
-    if(r>v*0.5)    return finish('rival','overgrown');
-    // MERCY: a sustained, decisive lead ends the game — don't make the loser slog
-    // through a decided match. Needs to HOLD for a few turns, so it's earned, not a spike.
-    const margin=(y-r)/((y+r)||1);
-    if(Math.abs(margin)>0.42){ g.mercy=(g.mercy||0)+1;
-      if(g.mercy>=3) return finish(margin>0?'you':'rival','decisive'); }
-    else g.mercy=0;
-    if(g.turn>60)  return finish(y>r?'you':(r>y?'rival':'draw'),'season');
+  // dispersal: desirable/allied colonies get carried to distant edible tiles.
+  // Mimicry lets you ride a RIVAL faction's foragers (extra long reach into their web).
+  function dispersal(){
+    for(const c of g.colonies){ const g_=c.genome;
+      const appeal=g_.edibility+g_.psychotropic+g_.mimicry;
+      if(appeal<=0) continue;
+      if(g_.toxicity>g_.mimicry && g_.edibility===0) continue;   // obvious poison, not carried
+      if(rng()>0.2+appeal*0.08) continue;
+      const anchors=presence(c); if(!anchors.length) continue;
+      const reach=3+g_.spores*2+(g_.mimicry>0?3:0);
+      const shots=1+Math.floor((g_.gills+g_.spores)/2);
+      for(let s=0;s<shots;s++){ const a=anchors[Math.floor(rng()*anchors.length)];
+        const nx=clampX(a.x+Math.round((rng()*2-1)*reach)), ny=clampY(a.y+Math.round((rng()*2-1)*reach));
+        const t=g.grid[idx(nx,ny)];
+        if(t.bio[c.i]<=0 && edible(c,t) && rng()<0.4+g_.spores*0.1) t.bio[c.i]=T.SEED_BIO*0.6;
+      }
+    }
   }
-  function finish(winner,reason){ g.over=true; g.winner=winner; g.reason=reason; }
 
-  // ---- turn flow (simultaneous WeGo — no first mover) ----
-  // beginTurn refills both growth budgets and clears the order book; the player (UI or
-  // sim policy) queues claims during planning; endTurn lets the rival plan BLIND, then
-  // resolves everyone's orders together and runs the world for both sides interleaved.
+  // ---- homeostasis health & meter (the visible endpoint) ----
+  // sustainability: pools held at their harvest=regen equilibrium (~REF of cap) are
+  // HEALTHY; "healthy" means "not crashing toward zero", not "full". Over-extraction
+  // pushes a pool below REF and the score falls off — that's the overshoot signal.
+  function poolHealth(col){ const tiles=presence(col); if(!tiles.length) return 0;
+    let s=0,n=0; const REF=0.30;
+    for(const t of tiles){ for(const r of RES_KEYS){ if(dietEff(col,r)>0.1){
+      s+=clamp01((t.pool[r]/t.cap[r])/REF); n++; } } }
+    return n? s/n : 0; }
+  function volatility(col){ if(col.hist.length<3) return 1;
+    const w=col.hist.slice(-T.WIN_WINDOW); const m=mean(w); return m>0? stdev(w)/m : 1; }
+  function health(col){ const bio=totalBio(col);
+    if(bio<T.MIN_ALIVE) return 0;
+    const vScore=clamp01(1 - volatility(col)/T.VOL_REF);  // stability = flat biomass
+    const ph=clamp01(poolHealth(col));                    // sustainability = healthy pools
+    const grown=clamp01(bio/10);                          // must be a real web, not a speck
+    return clamp01(0.50*vScore + 0.40*ph + 0.10*grown);
+  }
+  function updateMeters(){
+    for(const c of g.colonies){ if(!c.alive) continue;
+      const prev=c.hist.length?c.hist[c.hist.length-1]:0;
+      const bio=totalBio(c); c.hist.push(bio);
+      if(bio<T.MIN_ALIVE){ c.alive=false; c.meter=0; c.hold=0;
+        if(c.isYou) logfn('💀 Your web collapsed.'); continue; }
+      const h=health(c);
+      c.meter += (h-c.meter)*T.METER_EASE;
+      if(prev>0 && (prev-bio)/prev > T.CRASH_DROP){ c.meter*=0.6;        // boom-bust snaps it down
+        if(c.isYou) logfn('⚠️ Overshoot — biomass crashed, stability lost'); }
+      // must be BOTH stable (meter) and a real, substantial web (size) — no tiny hermit lock
+      if(c.meter>=T.LOCK && bio>=T.SIZE_MIN){ c.hold++;
+        if(c.hold>=T.LOCK_HOLD && !c.biostasis){ c.biostasis=true;
+          if(c.isYou) logfn('🌿 Biostasis achieved — a stable, self-sustaining web!'); } }
+      else c.hold=0;
+    }
+  }
+
+  // dominance = share of *sustainable* production. The discount is STEEP: an unstable
+  // giant (low meter) scores far below a stable medium web — healthiest equilibrium wins.
+  function sustainableBio(col){ return totalBio(col) * clamp01((col.meter-0.25)/0.6); }
+  function dominance(col){ const tot=g.colonies.reduce((s,c)=>s+sustainableBio(c),0);
+    return tot>0? sustainableBio(col)/tot : 0; }
+
+  // ---- end conditions ----
+  function checkEnd(){
+    const alive=g.colonies.filter(c=>c.alive);
+    if(alive.length===0){ return finish(null,'collapse'); }
+    if(alive.length===1 && g.colonies.length>1){ return finish(alive[0],'last-web'); }
+    // biostasis reached: if scoring, the most dominant stable web wins; else first to lock.
+    const locked=g.colonies.filter(c=>c.biostasis);
+    if(locked.length){
+      // let a couple cycles pass so ties/dominance settle, then call it
+      g._lockAge=(g._lockAge||0)+1;
+      if(g._lockAge>=3 || locked.length===alive.length){
+        const win = scoreMode ? locked.slice().sort((a,b)=>dominance(b)-dominance(a))[0] : locked[0];
+        return finish(win,'biostasis');
+      }
+    }
+    if(g.turn>g.season){
+      // reaching biostasis is the point: a stable web beats any unstable one, however big.
+      // Dominance only breaks ties among those who actually stabilised.
+      const rank=alive.slice().sort((a,b)=>
+        (b.biostasis-a.biostasis) || (scoreMode?dominance(b)-dominance(a):b.meter-a.meter));
+      return finish(rank[0], rank[0].biostasis?'biostasis':'unsettled');
+    }
+  }
+  function finish(col,reason){ g.over=true; g.winner=col?col.faction:null; g.winnerCol=col||null; g.reason=reason; }
+
+  // ---- turn flow (simultaneous; co-occupation ⇒ order-independent, inherently fair) ----
   function beginTurn(){
-    for(const t of g.grid) t.claim=null;
-    g.orders=[];
-    // TWO-PHASE MOMENTUM. While the game is close, the TRAILER gets a catch-up
-    // boost (comebacks, no runaway — you can't see the ending coming). Once a
-    // decisive margin is crossed, the LEADER snowballs instead, for a quick and
-    // merciful finish — no slogging through a lost game. Fair because the trailer
-    // had every chance while it was contestable.
-    const yT=ownedTiles(g.you).length, rT=ownedTiles(g.rival).length;
-    const diff=yT-rT, ad=Math.abs(diff)/((yT+rT)||1);   // margin vs occupied territory
-    let yB=0, rB=0;
-    if(ad < 0.18){                         // CONTESTED — help the trailer (comeback window)
-      const b = ad>0.08 ? 1 : 0;
-      if(diff<0) yB=b; else if(diff>0) rB=b;
-    } else if(ad >= 0.28){                 // DECIDED — leader snowballs to a quick, merciful end
-      const b = ad>0.45 ? 3 : 2;
-      if(diff>0) yB=b; else rB=b;
-    }
-    g.you.growthLeft  = maxGrowth(g.you)  + yB;
-    g.rival.growthLeft= maxGrowth(g.rival)+ rB;
+    for(const c of g.colonies) c.growthLeft=maxSeeds(c);
   }
   function endTurn(){
-    if(g.over) return {changed:[]};
-    const before=g.grid.map(t=>t.owner);
-    (opts.rivalPolicy||POLICIES.greedy)(api, g.rival);   // rival plans, blind to player's claims
-    resolveOrders();                                     // ← both sides' claims decided together
-    // resolve the world for both, but RANDOMISE who goes first each turn so dispersal
-    // races have no fixed winner (kills the last of the first-mover advantage).
-    const pair = g.rng()<0.5 ? [g.you,g.rival] : [g.rival,g.you];
-    for(const c of pair) symbiose(c);
-    for(const c of pair) metabolize(c);
-    for(const c of pair) grazers(c);
-    for(const c of pair) foragers(c);
-    for(const c of pair) fruiting(c);
+    if(g.over) return {};
+    // AI colonies plan (the player/policy for "you" has already acted this cycle)
+    for(const c of g.colonies){ if(c.isYou && opts.playerControlled) continue;
+      (opts.policyFor?opts.policyFor(c):POLICIES.tender)(api,c); }
+    ecology(); dispersal(); grazers();
+    updateMeters();
     g.turn++;
-    checkWin();
-    const changed=[]; g.grid.forEach((t,i)=>{ if(t.owner!==before[i]) changed.push(i); });
+    checkEnd();
     if(!g.over) beginTurn();
-    return {changed};
+    return {};
   }
 
-  // public surface used by UI, policies and sim
-  const api={ state:g, SUB, TRAITS, FACTIONS, upCost,
-    idx, inBounds:inB, ownedTiles, frontier, spreadCost, canDigest, maxGrowth,
-    trySpread, upgrade, endTurn, who, viable,
-    tilesOf:col=>ownedTiles(col).length };
+  const api={ state:g, RES, RES_KEYS, TRAITS, FACTIONS, upCost, T,
+    idx, inBounds:inB, neighbors, presence, totalBio, reachable, edible,
+    dietEff, maxSeeds, seedCost, seed, upgrade, endTurn, beginTurn,
+    health, volatility, poolHealth, meterOf:c=>c.meter, dominance, sustainableBio,
+    who:c=>FACTIONS[c.faction].name };
 
   genMap();
   return api;
 }
 
 // ============================================================
-//  STRATEGY POLICIES (the "builds" the simulator pits together)
-//  A policy spends one planning phase for a colony: upgrades + spreads.
+//  POLICIES — how an AI colony plays a cycle (also the sim's "builds").
+//  A policy chooses how AGGRESSIVELY to seed (overshoot risk) and what to evolve.
 // ============================================================
-function plan(api, col, build, valueTile){
-  // (growth budget is set by the engine's beginTurn, incl. any rubber-band catch-up)
-  // invest: raise the earliest not-maxed trait we can afford, keeping a spread reserve
-  const upgraded=new Set();
-  for(let n=0;n<3;n++){
-    for(const key of build){
-      if(upgraded.has(key)) continue;
-      if(col.genome[key]>=5) continue;
-      if(col.biomass - api.upCost(col.genome[key]) < 6) continue;
-      if(api.upgrade(col,key)){ upgraded.add(key); break; }
-    }
+function plan(api, col, {build, aggro, valueRes, homeostatic}){
+  // evolve: earliest not-maxed priority trait we can afford (keep a seed reserve)
+  for(const key of build){ if(col.genome[key]>=5) continue;
+    if(col.energy - api.upCost(col.genome[key]) < 6) continue;
+    if(api.upgrade(col,key)) break; }
+  // how many tiles to seed this cycle. A HOMEOSTATIC player brakes: when its pools
+  // are stressed it stops adding load (lets them recover), and once its web is a
+  // sustainable size it only grows a trickle. Knowing when to STOP is the skill.
+  let cap=Math.max(0,Math.round(col.growthLeft*aggro));
+  if(homeostatic){ const ph=api.poolHealth(col), bio=api.totalBio(col);
+    if(ph<0.5) cap=0;                          // pools stressed → stop, let them recover
+    else if(bio >= (col._target||22)) cap=0;   // reached a sustainable size → stop & stabilise
   }
-  // expand: best value-per-cost frontier tiles until growth or biomass runs out
-  const opts=api.frontier(col).filter(t=>api.canDigest(col,t))
-    .map(t=>({t,c:api.spreadCost(col,t),v:valueTile(t,col,api)}))
+  const opts=api.reachable(col)
+    .map(t=>({t,c:api.seedCost(col,t),v:valueRes(t,col,api)}))
     .sort((a,b)=>(b.v/b.c)-(a.v/a.c));
-  for(const o of opts){ if(col.growthLeft<=0) break; if(col.biomass<o.c) continue; api.trySpread(col,o.t); }
+  let used=0;
+  for(const o of opts){ if(used>=cap) break; if(col.energy<o.c) continue;
+    if(api.seed(col,o.t)){ used++; } }
 }
-const nutrientVal = (t,col,api)=> api.SUB[t.sub].nutrient - (t.owner?-2:0);
-const woodLoveVal = (t,col,api)=> (t.sub==='wood'?12:api.SUB[t.sub].nutrient);
-const overtakeVal = (t,col,api)=> api.SUB[t.sub].nutrient + (t.owner&&t.owner!==col?6:0);
-
-// ADAPTIVE — the "challenging but fair" opponent. It CHEATS NOTHING (same economy,
-// same growth budget, same actions the player has); it just reads the board and the
-// player's genome each turn and counters. That's what makes it fair.
-function adaptive(api, col){
-  const foe = col===api.state.you ? api.state.rival : api.state.you;
-  const myT = api.tilesOf(col), foeT = api.tilesOf(foe);
-  const fg = foe.genome;
-  let build;
-  if(fg.toxicity>=2 && fg.mimicry===0){         // foe is a toxic turtle → slip past with mimicry
-    build=['mimicry','diet','mycelium','spores','gills'];
-  } else if(fg.mycelium>=3 || foeT>myT+4){       // foe is out-expanding → race + hold with toxins
-    build=['diet','mycelium','toxicity','fruitcycle','gills'];
-  } else if(myT>foeT+4){                          // we're ahead → consolidate & cash in via spores
-    build=['diet','symbiosis','gills','spores','fruitcycle'];
-  } else {                                        // even → efficient generalist
-    build=['diet','mycelium','gills','toxicity','spores','fruitcycle'];
-  }
-  // when behind, bias tile value toward contesting the leader's frontier (pressure, not turtling)
-  const val = foeT>myT+3 ? overtakeVal : nutrientVal;
-  plan(api, col, build, val);
-}
+const nicheVal=(t,col,api)=> (t.pool[col.niche]||0) + t.pool.soil*0.3;
+const richVal =(t,col,api)=> api.RES_KEYS.reduce((s,r)=>s+(api.dietEff(col,r)>0?t.pool[r]:0),0);
 
 const POLICIES = {
-  adaptive,
-  // greedy = the default in-game rival: expand cheaply, shore up basics
-  greedy:  (api,col)=>plan(api,col,['diet','mycelium','toxicity','fruitcycle','spores','symbiosis'], nutrientVal),
-  rusher:  (api,col)=>plan(api,col,['mycelium','diet','fruitcycle','gills'], nutrientVal),
-  turtle:  (api,col)=>plan(api,col,['toxicity','diet','mycelium','symbiosis'], nutrientVal),
-  deceiver:(api,col)=>plan(api,col,['mimicry','edibility','spores','gills','mycelium'], overtakeVal),
-  symbiont:(api,col)=>plan(api,col,['diet','symbiosis','mycelium','gills'], woodLoveVal),
-  psychonaut:(api,col)=>plan(api,col,['psychotropic','spores','gills','fruitcycle','mycelium'], nutrientVal),
-  glutton: (api,col)=>plan(api,col,['edibility','diet','gills','spores','fruitcycle'], nutrientVal),
-  generalist:(api,col)=>plan(api,col,['diet','mycelium','gills','toxicity','spores','fruitcycle'], nutrientVal),
+  // tender = plays for homeostasis: slow, niche-focused, invests in stability/symbiosis
+  tender:  (api,col)=>plan(api,col,{build:['diet','symbiosis','restraint','mycelium','toxicity'],
+                                    aggro:0.5, valueRes:nicheVal, homeostatic:true}),
+  // boomer = naive greedy expansion → overshoot → boom-bust (the skill-gradient baseline)
+  boomer:  (api,col)=>plan(api,col,{build:['mycelium','diet','gills','spores'],
+                                    aggro:1.0, valueRes:richVal, homeostatic:false}),
+  // specialist = deep niche + symbiosis, minimal spread
+  specialist:(api,col)=>plan(api,col,{build:['diet','symbiosis','restraint','toxicity'],
+                                    aggro:0.35, valueRes:nicheVal, homeostatic:true}),
+  // generalist = broad diet, moderate spread, mild brake
+  generalist:(api,col)=>plan(api,col,{build:['diet','mycelium','restraint','gills','symbiosis'],
+                                    aggro:0.7, valueRes:richVal, homeostatic:true}),
+  // trickster = dispersal/mimicry web-builder, no brake (rides foragers, risks overshoot)
+  trickster:(api,col)=>plan(api,col,{build:['edibility','mimicry','spores','symbiosis','diet'],
+                                    aggro:0.8, valueRes:richVal, homeostatic:false}),
 };
 
-return { createGame, POLICIES, FACTIONS, TRAITS, SUB, upCost, mulberry32 };
+return { createGame, POLICIES, FACTIONS, TRAITS, RES, upCost, mulberry32 };
 });
