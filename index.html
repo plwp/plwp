@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mycelia — Homeostasis Prototype</title>
+<style>
+  :root{
+    --bg:#0d0f0c; --panel:#161a13; --panel2:#1e241a; --ink:#e8ecdf;
+    --muted:#8a967c; --line:#2c3626; --lock:#5fd08a; --warn:#e8a13a; --danger:#e0524d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);
+    font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex;min-height:100vh}
+  #stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px;gap:10px;min-width:0}
+  h1{font-size:17px;margin:0;letter-spacing:.5px}
+  h1 small{color:var(--muted);font-weight:400;font-size:12px}
+  #top{width:100%;max-width:760px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  canvas{background:#0a0c09;border:1px solid var(--line);border-radius:10px;max-width:100%;height:auto;cursor:pointer}
+  #hint{color:var(--muted);font-size:12px;min-height:16px;text-align:center;max-width:760px}
+  aside{width:330px;background:var(--panel);border-left:1px solid var(--line);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .card h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  .stat{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;margin:3px 0}
+  .stat b{font-weight:600}
+  /* homeostasis meter */
+  .meter{position:relative;height:22px;background:#0c1109;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:4px 0}
+  .meter .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#3a6b4d,#5fd08a);transition:width .3s}
+  .meter .lockline{position:absolute;top:0;bottom:0;width:2px;background:#fff8;left:80%}
+  .meter .lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;text-shadow:0 1px 2px #000}
+  .mini{height:9px;margin:2px 0}
+  .hold{display:flex;gap:3px;margin-top:4px}
+  .hp{flex:1;height:5px;border-radius:2px;background:#2c3626}
+  .hp.on{background:var(--lock)}
+  .trait{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .trait .n{flex:1}
+  .trait .n small{display:block;color:var(--muted);font-size:11px;line-height:1.25}
+  .pips{display:flex;gap:3px}
+  .pip{width:9px;height:9px;border-radius:2px;background:#2c3626}
+  .pip.on{background:#7fb88a}
+  button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;transition:.12s}
+  button:hover:not(:disabled){border-color:var(--lock);color:var(--lock)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .up{padding:4px 8px;font-size:12px;min-width:30px}
+  #cycle{width:100%;padding:11px;font-weight:600;font-size:15px;border-color:var(--lock);color:var(--lock)}
+  #cycle:hover:not(:disabled){background:var(--lock);color:#08130c}
+  #log{font-size:12px;color:var(--muted);max-height:120px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+  .cost{color:#e8c34a;font-size:11px}
+  .warn{color:var(--warn)} .danger{color:var(--danger)} .good{color:var(--lock)}
+  #ov{position:fixed;inset:0;background:#000c;display:none;align-items:center;justify-content:center;z-index:9}
+  #ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 30px;max-width:440px;text-align:center}
+  #start{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:10}
+  .fcards{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .fcards button{flex:1;min-width:150px;text-align:left;padding:12px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);justify-content:center;max-width:760px}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+  @media(max-width:880px){body{flex-direction:column}aside{width:100%;border-left:none;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="top">
+    <h1>🍄 Mycelia <small>— reach biostasis</small></h1>
+    <div style="font-size:12px;color:var(--muted)">Cycle <b id="turn" style="color:var(--ink)">1</b> / <span id="season">45</span></div>
+  </div>
+  <canvas id="cv" width="616" height="484"></canvas>
+  <div id="hint">Click a highlighted tile to seed your mycelium into it.</div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<aside>
+  <div class="card">
+    <h2>Homeostasis <span id="ph-warn" style="float:right;text-transform:none;letter-spacing:0"></span></h2>
+    <div class="meter"><div class="fill" id="m-fill"></div><div class="lockline"></div><div class="lbl" id="m-lbl"></div></div>
+    <div class="hold" id="m-hold"></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">Hold above the line 4 cycles to lock a stable web.</div>
+    <div id="rivals" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Your web</h2>
+    <div class="stat"><span>Energy</span><b id="s-energy">—</b></div>
+    <div class="stat"><span>Biomass</span><b id="s-bio">—</b></div>
+    <div class="stat"><span>Growth left</span><b id="s-growth">—</b></div>
+    <div class="stat"><span>Niche</span><b id="s-niche">—</b></div>
+  </div>
+
+  <div class="card">
+    <h2>Genome <span style="float:right;text-transform:none;letter-spacing:0;color:#e8c34a">spend energy</span></h2>
+    <div id="traits"></div>
+  </div>
+
+  <button id="cycle">End Cycle ▸</button>
+
+  <div class="card"><h2>Log</h2><div id="log"></div></div>
+</aside>
+
+<div id="ov"><div class="box"><h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p><button onclick="location.reload()">New game ↺</button></div></div>
+
+<div id="start"><div class="box" style="max-width:640px;text-align:left">
+  <h2 style="margin:0">🍄 Mycelia</h2>
+  <p style="color:var(--muted);margin:6px 0 0">No war. Grow your fungus and its allies into a <b style="color:var(--ink)">stable, self-sustaining web</b> — reach <b style="color:var(--lock)">biostasis</b> before you overshoot and boom-bust. Pick your species:</p>
+  <div class="fcards" id="fcards"></div>
+  <p style="color:var(--muted);font-size:12px;margin:12px 0 0">Rivals share the floor in different niches — coexist or out-compete, your call.</p>
+</div></div>
+
+<script src="./engine.js"></script>
+<script>
+const {createGame, POLICIES, FACTIONS, TRAITS} = Mycelia;
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let api, S, you, TS, selected=null, anim=null;
+const GROUPS={grow:'⚔️ Growth',def:'🛡️ Defense',trick:'🎭 Deception',sym:'🤝 Symbiosis',repro:'🍄 Reproduction'};
+
+// ---------- start ----------
+function buildStart(){
+  const box=document.getElementById('fcards'); box.innerHTML='';
+  for(const k in FACTIONS){ const f=FACTIONS[k];
+    const b=document.createElement('button');
+    b.style.borderColor=f.color+'66';
+    b.innerHTML=`<div style="font-size:15px;color:${f.color}">${f.name}</div>
+      <div style="color:var(--muted);font-size:11px;margin:2px 0 6px">${f.tag} · eats ${f.niche}</div>
+      <div style="font-size:12px;line-height:1.35">${f.effect}</div>`;
+    b.onclick=()=>startGame(k); box.appendChild(b);
+  }
+}
+function startGame(fk){
+  api=createGame({ playerFaction:fk, playerControlled:true,
+    policyFor:(c)=>POLICIES.tender, log:m=>log(m) });
+  S=api.state; you=S.colonies.find(c=>c.isYou);
+  TS=Math.floor(cv.width/S.COLS); cv.height=TS*S.ROWS; cv.width=TS*S.COLS;
+  document.getElementById('start').style.display='none';
+  document.getElementById('season').textContent=S.season;
+  document.getElementById('s-niche').textContent=you.niche;
+  buildLegend(); render(); syncPanel();
+  log(`You are ${FACTIONS[fk].name}. Grow a stable web and reach biostasis.`);
+}
+function buildLegend(){
+  const L=document.getElementById('legend'); L.innerHTML='';
+  for(const r of api.RES_KEYS) L.innerHTML+=`<span><span class="sw" style="background:${api.RES[r].color}"></span>${api.RES[r].name}</span>`;
+  for(const c of S.colonies) L.innerHTML+=`<span><span class="sw" style="background:${FACTIONS[c.faction].color};border-radius:50%"></span>${FACTIONS[c.faction].name}${c.isYou?' (you)':''}</span>`;
+}
+
+// ---------- render ----------
+function render(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const front = !S.over ? new Set(api.reachable(you)) : new Set();
+  for(const t of S.grid){
+    const px=t.x*TS, py=t.y*TS;
+    // substrate tinted by how full its dominant pool is (depleted = darker → overexploited)
+    const dh=t.pool[t.dom]/t.cap[t.dom];
+    ctx.fillStyle=api.RES[t.dom].color; ctx.fillRect(px,py,TS,TS);
+    ctx.fillStyle=`rgba(0,0,0,${0.55*(1-dh)})`; ctx.fillRect(px,py,TS,TS);
+    // colony presence: your biomass as central blob, rivals as corner dots
+    let corner=0;
+    for(const c of S.colonies){ const b=t.bio[c.i]; if(b<=0) continue;
+      const col=FACTIONS[c.faction].color;
+      if(c.isYou){ const bb = anim&&anim.bio[api.idx(t.x,t.y)]!==undefined ? anim.lerp(api.idx(t.x,t.y),b) : b;
+        const r=Math.min(TS/2-3, 4+bb*3.2);
+        ctx.fillStyle=col+'d0'; ctx.beginPath(); ctx.arc(px+TS/2,py+TS/2,r,0,7); ctx.fill();
+      } else { const cx=px+6+(corner%2)*(TS-12), cy=py+6+(corner<2?0:TS-12);
+        ctx.fillStyle=col; ctx.beginPath(); ctx.arc(cx,cy,Math.min(5,2+t.bio[c.i]),0,7); ctx.fill(); corner++; }
+    }
+    if(front.has(t)){ const ok=you.energy>=api.seedCost(you,t)&&you.growthLeft>0;
+      ctx.strokeStyle=ok?'#5fd08a':'#e0524d88'; ctx.lineWidth=2; ctx.strokeRect(px+2,py+2,TS-4,TS-4);
+      if(ok){ctx.fillStyle='#5fd08a';ctx.font='9px sans-serif';ctx.fillText('+'+api.seedCost(you,t),px+4,py+12);}
+    }
+    ctx.strokeStyle='#00000030'; ctx.lineWidth=1; ctx.strokeRect(px,py,TS,TS);
+  }
+  if(selected){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(selected.x*TS+1,selected.y*TS+1,TS-2,TS-2);}
+}
+
+// ---------- panel ----------
+function syncPanel(){
+  document.getElementById('turn').textContent=S.turn;
+  document.getElementById('s-energy').textContent=Math.floor(you.energy);
+  document.getElementById('s-bio').textContent=api.totalBio(you).toFixed(0);
+  document.getElementById('s-growth').textContent=you.growthLeft+' / '+api.maxSeeds(you);
+  // meter
+  const m=you.meter, lock=api.T.LOCK;
+  document.getElementById('m-fill').style.width=Math.round(m*100)+'%';
+  document.getElementById('m-lbl').textContent='Homeostasis '+(m*100).toFixed(0)+'%'+(you.biostasis?' 🌿 LOCKED':'');
+  const hold=document.getElementById('m-hold'); hold.innerHTML='';
+  for(let i=0;i<api.T.LOCK_HOLD;i++) hold.innerHTML+=`<div class="hp ${i<you.hold?'on':''}"></div>`;
+  // overshoot warning
+  const ph=api.poolHealth(you), w=document.getElementById('ph-warn');
+  if(api.totalBio(you)<2) w.innerHTML='';
+  else if(ph<0.35) w.innerHTML='<span class="danger">⚠ overexploiting!</span>';
+  else if(ph<0.55) w.innerHTML='<span class="warn">pools stressed</span>';
+  else w.innerHTML='<span class="good">pools healthy</span>';
+  // rival meters (legibility: see the race)
+  const rv=document.getElementById('rivals'); rv.innerHTML='';
+  for(const c of S.colonies){ if(c.isYou) continue; const f=FACTIONS[c.faction];
+    rv.innerHTML+=`<div style="font-size:11px;display:flex;justify-content:space-between"><span style="color:${f.color}">${f.name}</span>
+      <span style="color:var(--muted)">${c.biostasis?'🌿 locked':(c.alive?'':'💀 ')}${api.totalBio(c).toFixed(0)} bio</span></div>
+      <div class="meter mini"><div class="fill" style="width:${Math.round(c.meter*100)}%;background:${f.color}"></div></div>`;
+  }
+  // traits
+  const box=document.getElementById('traits'); box.innerHTML=''; let last=null;
+  for(const tr of TRAITS){ if(tr.tag!==last){ last=tr.tag;
+      const h=document.createElement('div'); h.style.cssText='font-size:10px;letter-spacing:.5px;color:var(--muted);margin:8px 0 2px'; h.textContent=GROUPS[tr.tag]; box.appendChild(h); }
+    const lvl=you.genome[tr.key], c=api.upCost(lvl);
+    const row=document.createElement('div'); row.className='trait';
+    row.innerHTML=`<div class="n">${tr.label}<small>${tr.desc}</small></div>
+      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip ${i<lvl?'on':''}"></div>`).join('')}</div>
+      <button class="up" ${lvl>=5||you.energy<c?'disabled':''}>${lvl>=5?'max':'+<span class=cost>'+c+'</span>'}</button>`;
+    if(lvl<5){ row.querySelector('button').onclick=()=>{ if(api.upgrade(you,tr.key)){log('Evolved '+tr.label+' → '+(lvl+1));render();syncPanel();} }; }
+    box.appendChild(row);
+  }
+}
+
+// ---------- interaction ----------
+cv.addEventListener('click',e=>{
+  if(S.over)return; const r=cv.getBoundingClientRect();
+  const x=Math.floor((e.clientX-r.left)/(r.width/S.COLS)), y=Math.floor((e.clientY-r.top)/(r.height/S.ROWS));
+  if(x<0||y<0||x>=S.COLS||y>=S.ROWS)return;
+  const t=S.grid[api.idx(x,y)];
+  if(new Set(api.reachable(you)).has(t)){ if(api.seed(you,t)){render();syncPanel();hint('Seeded. Watch you don’t overshoot.');} }
+  else { selected=t; showTile(t); render(); }
+});
+function showTile(t){
+  const pools=api.RES_KEYS.map(r=>`${api.RES[r].name} ${t.pool[r].toFixed(1)}/${t.cap[r]}`).join(' · ');
+  hint(`${api.RES[t.dom].name} tile — ${pools}`);
+}
+function hint(m){document.getElementById('hint').textContent=m}
+function log(m){const d=document.getElementById('log');const e=document.createElement('div');e.textContent='C'+S.turn+': '+m;d.appendChild(e);while(d.children.length>30)d.removeChild(d.firstChild)}
+
+// ---------- end cycle (animated) ----------
+document.getElementById('cycle').onclick=()=>{
+  if(S.over||anim)return;
+  const before={}; for(const t of S.grid) before[api.idx(t.x,t.y)]=t.bio[you.i];
+  api.endTurn();
+  const after={}; for(const t of S.grid) after[api.idx(t.x,t.y)]=t.bio[you.i];
+  // tween your biomass blobs for a "living" resolution
+  const start=performance.now(), DUR=450;
+  document.getElementById('cycle').disabled=true;
+  anim={bio:after, lerp:(i,b)=>{const p=anim.p; return (before[i]||0)*(1-p)+(after[i]||0)*p;}, p:0};
+  (function frame(now){ anim.p=Math.min(1,(now-start)/DUR); render();
+    if(anim.p<1) requestAnimationFrame(frame);
+    else { anim=null; document.getElementById('cycle').disabled=false; render(); syncPanel(); if(S.over) endScreen(); }
+  })(start);
+};
+function endScreen(){
+  const w=S.winnerCol, me=w&&w.isYou;
+  let t,b;
+  if(S.reason==='biostasis'){ t=me?'🌿 Biostasis!':`${FACTIONS[S.winner].name} reached biostasis first`;
+    b=me?'You engineered a stable, self-sustaining web.':'Their web stabilised before yours.'; }
+  else if(S.reason==='collapse'){ t='Collapse'; b='The ecosystem crashed. No stable web survived.'; }
+  else if(S.reason==='last-web'){ t=me?'Last web standing':'Your web died out'; b='Only one colony endured.'; }
+  else { t=me?'Season’s end — you led':'Season’s end'; b='No one fully locked biostasis; the healthiest web wins.'; }
+  document.getElementById('ov-t').textContent=t; document.getElementById('ov-b').textContent=b;
+  document.getElementById('ov').style.display='flex';
+}
+
+buildStart();
+</script>
+</body>
+</html>

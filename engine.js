@@ -190,7 +190,10 @@ function createGame(opts={}){
     }
     // grow / starve biomass; bank spendable energy
     for(let ti=0;ti<g.grid.length;ti++){ const t=g.grid[ti];
-      for(const c of g.colonies){ const gross=gainTile[ti][c.i]; if(t.bio[c.i]<=0&&gross<=0) continue;
+      for(const c of g.colonies){ let gross=gainTile[ti][c.i]; if(t.bio[c.i]<=0&&gross<=0) continue;
+        // SYMBIOSIS: mycorrhizal partnership on your niche's host tiles yields extra food
+        // that does NOT deplete the pool — so an allied web can sustainably grow bigger.
+        if(c.genome.symbiosis>0 && t.dom===c.niche && t.bio[c.i]>0) gross += c.genome.symbiosis*0.13;
         const maint=t.bio[c.i]*(T.MAINT - c.genome.restraint*0.012);
         const net=gross*(1-T.ENERGY_TAX) - maint;
         c.energy += gross*T.ENERGY_TAX;
@@ -337,8 +340,10 @@ function plan(api, col, {build, aggro, valueRes, homeostatic}){
   // sustainable size it only grows a trickle. Knowing when to STOP is the skill.
   let cap=Math.max(0,Math.round(col.growthLeft*aggro));
   if(homeostatic){ const ph=api.poolHealth(col), bio=api.totalBio(col);
-    if(ph<0.5) cap=0;                          // pools stressed → stop, let them recover
-    else if(bio >= (col._target||22)) cap=0;   // reached a sustainable size → stop & stabilise
+    // a bigger web is only sustainable if you invested in traits that hold it up
+    const target=14 + col.genome.symbiosis*4 + col.genome.restraint*3 + col.genome.diet*1.5;
+    if(ph<0.5) cap=0;                    // pools stressed → stop, let them recover
+    else if(bio>=target) cap=0;          // reached YOUR sustainable size → stabilise
   }
   const opts=api.reachable(col)
     .map(t=>({t,c:api.seedCost(col,t),v:valueRes(t,col,api)}))
