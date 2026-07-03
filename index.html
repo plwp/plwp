@@ -103,7 +103,7 @@
 <script>
 const {createGame, FACTIONS, TRAITS} = Mycelia;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let api,S,you,S3,HS,playing=true,speed=1,timer=null;
+let api,S,you,S3,HS,playing=true,speed=1,timer=null,fruitMode=false;
 
 (function(){ const box=document.getElementById('fcards');
   for(const k in FACTIONS){ const f=FACTIONS[k]; const b=document.createElement('button'); b.style.borderColor=f.color+'66';
@@ -142,6 +142,8 @@ function render(){
       const a=['66','88','aa','cc','ee','ff'][Math.min(5,t.lvl)]||'cc';
       ctx.fillStyle=fc+a; ctx.fill(); }
     ctx.strokeStyle='#0000004d'; ctx.lineWidth=1; ctx.stroke();
+    // while placing a fruit, glow the tiles you can put one on
+    if(fruitMode && t.owner===you && !t.fruit){ ctx.strokeStyle='#e0a0ff'; ctx.lineWidth=2.5; hexPath(cx,cy); ctx.stroke(); }
     // fruiting body: a little mushroom
     if(t.fruit){ const oc=FACTIONS[t.fruit.owner.faction].color;
       ctx.fillStyle='#f2ead8'; ctx.fillRect(cx-1,cy-1,2,HS*0.5);            // stem
@@ -184,24 +186,25 @@ function coach(){ const el=document.getElementById('coach'); let m,e='var(--acce
   const sh=api.share(you);
   if(api.tilesOf(you)===0){ m=`<b>Your colony died out.</b>`; }
   else if(you.spore<api.FRUIT_COST){ m=`<b>Energy is building…</b> While you wait, watch your mycelium bloom. Soon you can <b>fruit</b> to attract foragers.`; }
-  else { m=`<b>You can act.</b> Tap <b>🍄 Fruit</b> to erupt a mushroom near open ground — foragers will carry your spores far. Or <b>Upgrade</b>.`; }
+  else { m=`<b>You can act.</b> Tap <b>🍄 Fruit</b>, then tap one of your tiles near open ground — foragers will carry its spores far. Or <b>Upgrade</b>.`; }
   if(sh>0.4) m=`<b>You're winning (${Math.round(sh*100)}%).</b> Keep fruiting toward open ground to fill the forest.`;
   el.innerHTML=m; el.style.borderLeftColor=e;
 }
 
 // ---- interaction ----
-// pick the best owned tile to fruit on: most open ground beside it, prefer your niche
-function bestFruitTile(){ return api.owned(you).filter(t=>!t.fruit)
-  .map(t=>({t,v:api.neighbors(t).filter(n=>!n.owner&&n.sub!=='barren').length + (t.sub===you.niche?1:0)}))
-  .sort((a,b)=>b.v-a.v)[0]; }
-document.getElementById('fruitbtn').onclick=()=>{ if(S.over)return;
-  const best=bestFruitTile();
-  if(best && best.v>0 && api.fruit(you,best.t)){ render(); syncPanel(); }
-  else document.getElementById('hint').textContent='No open ground to fruit toward yet — grow your mycelium outward first.'; };
-// optional precision on desktop: tap your own tile to fruit exactly there
-cv.addEventListener('click',e=>{ if(S.over||!api.canFruit(you))return; const r=cv.getBoundingClientRect();
+// Tap Fruit to arm placement (your tiles glow), then tap a tile to grow the mushroom there.
+document.getElementById('fruitbtn').onclick=()=>{ if(S.over||!api.canFruit(you))return;
+  fruitMode=!fruitMode;
+  document.getElementById('fruitbtn').classList.toggle('active',fruitMode);
+  document.getElementById('hint').textContent=fruitMode?'Tap one of your glowing tiles to grow a mushroom there.':'';
+  if(fruitMode) cv.scrollIntoView({behavior:'smooth',block:'center'});
+  render(); };
+cv.addEventListener('click',e=>{ if(S.over||!fruitMode)return; const r=cv.getBoundingClientRect();
   const t=pixelToTile((e.clientX-r.left)*(cv.width/r.width),(e.clientY-r.top)*(cv.height/r.height));
-  if(t && t.owner===you && !t.fruit && api.fruit(you,t)){ render(); syncPanel(); } });
+  if(t && t.owner===you && !t.fruit && api.fruit(you,t)){ fruitMode=false;
+    document.getElementById('fruitbtn').classList.remove('active'); document.getElementById('hint').textContent='';
+    render(); syncPanel(); }
+  else document.getElementById('hint').textContent='Fruit on one of YOUR glowing tiles that has no mushroom yet.'; });
 
 document.getElementById('play').onclick=()=>{ playing=!playing;
   document.getElementById('play').textContent=playing?'⏸ Pause':'▶ Play'; loop(); };
