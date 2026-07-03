@@ -22,28 +22,28 @@ const SUB = {
   barren: {name:'Barren', color:'#20241c', income:0, cost:99,tough:9},
 };
 
-// ---- traits (0..5), each clearly tied to a verb ----
+// ---- upgrades: three shared FRUIT modifiers (+ core growth). Simple. ----
 const TRAITS = [
-  {key:'mycelium', label:'Mycelium', desc:'Expand for less energy', verb:'expand'},
-  {key:'diet',     label:'Diet',     desc:'More income from every tile', verb:'income'},
-  {key:'toxicity', label:'Toxicity', desc:'Your tiles are harder to encroach', verb:'defend'},
-  {key:'mimicry',  label:'Mimicry',  desc:'Encroach on rivals for less', verb:'expand'},
-  {key:'symbiosis',label:'Symbiosis',desc:'Bonus income on your niche substrate', verb:'income'},
-  {key:'gills',    label:'Gills',    desc:'Fruit flings more spores', verb:'fruit'},
-  {key:'spores',   label:'Spores',   desc:'Fruit reaches farther, lands better', verb:'fruit'},
+  {key:'mycelium', label:'Mycelium', desc:'Expand into tiles for less energy'},
+  {key:'gills',    label:'Gills',    desc:'Fruiting releases more spores'},
+  {key:'spores',   label:'Spores',   desc:'Spores travel farther — a puffball reaches across the map'},
 ];
 const upCost = lvl => 4 + lvl*4;
 
-// ---- factions: niche substrate + a signature edge ----
+// ---- factions: niche substrate + a UNIQUE signature chemistry (its own upgrade) ----
 const FACTIONS = {
   boletus:{ name:'Boletus', tag:'The Feast', color:'#e8c34a', niche:'wood',
-    effect:'Expands cheaply on wood — a fast, sprawling decomposer.', sig:'cheap-wood' },
+    bonus:{key:'taste', label:'Taste', desc:'Foragers love you — spores land far more reliably'},
+    effect:'Choice edible. The best spread on the floor.' },
   psilocybe:{ name:'Psilocybe', tag:'The Prophet', color:'#c47cff', niche:'dung',
-    effect:'Fruits farthest — leaps across the map to open new fronts.', sig:'far-fruit' },
+    bonus:{key:'psychotropic', label:'Psychotropics', desc:'Manipulated foragers fly your spores much farther'},
+    effect:'Psychedelic. Leaps clear across the map.' },
   amanita:{ name:'Amanita', tag:'The Deceiver', color:'#e0524d', niche:'litter',
-    effect:'Holds ground hardest — its tiles resist encroachment.', sig:'tough-hold' },
+    bonus:{key:'lethality', label:'Lethality', desc:'Toxic — your tiles are far harder to take'},
+    effect:'Deadly. Holds its ground like nothing else.' },
 };
 const FKEYS = Object.keys(FACTIONS);
+const bonusKey = f => FACTIONS[f].bonus.key;
 
 function mulberry32(a){ return function(){
   a|=0; a=a+0x6D2B79F5|0;
@@ -68,10 +68,13 @@ function createGame(opts={}){
 
   const ACTIONS_PER_TURN = opts.actions||3;   // board-game rhythm: 3 actions each turn
   function mkColony(i,key){
+    const genome={mycelium:0,gills:1,spores:1}; genome[bonusKey(key)]=0;  // + faction chemistry
     return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction,
-      genome:{mycelium:0,diet:0,toxicity:0,mimicry:0,symbiosis:0,gills:1,spores:1},
-      energy:9, actions:ACTIONS_PER_TURN };
+      genome, energy:9, actions:ACTIONS_PER_TURN };
   }
+  // the upgrade menu for a colony = the 3 shared fruit modifiers + its own faction bonus
+  function traitsFor(col){ return TRAITS.concat([Object.assign({faction:true}, FACTIONS[col.faction].bonus)]); }
+  const gv=(col,k)=>col.genome[k]||0;   // genome value (0 if trait not on this faction)
   function genMap(){
     g.grid=[];
     for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
@@ -102,21 +105,15 @@ function createGame(opts={}){
 
   // ---- costs ----
   function expandCost(col,t){
-    let c=SUB[t.sub].cost - col.genome.mycelium;
-    if(col.faction && FACTIONS[col.faction].sig==='cheap-wood' && t.sub==='wood') c-=2; // Boletus edge
-    if(t.owner && t.owner!==col){                 // encroaching on a rival costs their defence
-      c += 1 + t.owner.genome.toxicity - col.genome.mimicry;   // (str is siege HP, not cost)
-      if(FACTIONS[t.owner.faction].sig==='tough-hold') c+=1;   // Amanita edge
-    }
+    let c=SUB[t.sub].cost - gv(col,'mycelium');
+    if(t.owner && t.owner!==col) c += 1 + gv(t.owner,'lethality');   // rival's toxicity defends
     return Math.max(1, Math.round(c));
   }
   function income(col){ let sum=0;
-    for(const t of owned(col)){ let v=SUB[t.sub].income + col.genome.diet*0.5;
-      if(col.genome.symbiosis>0 && t.sub===col.niche) v+=col.genome.symbiosis*0.6;
-      sum+=v; }
+    for(const t of owned(col)) sum += SUB[t.sub].income + (t.sub===col.niche?1:0);  // niche bonus
     return sum;
   }
-  function fruitReach(col){ return 3 + col.genome.spores*2 + (FACTIONS[col.faction].sig==='far-fruit'?4:0); }
+  function fruitReach(col){ return 3 + gv(col,'spores')*2 + gv(col,'psychotropic')*3; }
   function fruitCost(col){ return 4; }
 
   // ---- the three verbs — each spends 1 ACTION + energy (return true on success) ----
@@ -134,22 +131,24 @@ function createGame(opts={}){
     } else { flip(col,t); }
     return true;
   }
-  // claimed tiles get real strength so they can't be snatched straight back
+  // claimed tiles get real strength so they can't be snatched straight back;
+  // Amanita's Lethality makes its ground especially hard to take.
   function flip(col,t){ const prev=t.owner; t.owner=col;
-    t.str=(prev?3:2)+Math.floor(col.genome.toxicity/2); t.takenTurn=g.turn;
+    t.str=(prev?3:2)+gv(col,'lethality'); t.takenTurn=g.turn;
     if(prev) logfn(`${who(col)} broke through and took a tile from ${who(prev)}`); }
   function fruit(col){
     if(col.actions<=0) return false;
     const c=fruitCost(col); if(col.energy<c) return false;
     col.energy-=c; col.actions--;
     const anchors=owned(col); if(!anchors.length) return false;
-    const reach=fruitReach(col), shots=col.genome.gills+col.genome.spores;
+    const reach=fruitReach(col), shots=gv(col,'gills')+gv(col,'spores');
+    const success=0.4 + gv(col,'spores')*0.05 + gv(col,'taste')*0.12;   // Taste lands reliably
     let landed=0;
     for(let s=0;s<shots;s++){ const a=anchors[Math.floor(rng()*anchors.length)];
       const nx=Math.max(0,Math.min(COLS-1,a.x+Math.round((rng()*2-1)*reach)));
       const ny=Math.max(0,Math.min(ROWS-1,a.y+Math.round((rng()*2-1)*reach)));
       const t=g.grid[idx(nx,ny)];
-      if(!t.owner && t.sub!=='barren' && rng()<0.45+col.genome.spores*0.08){ t.owner=col; t.str=1; landed++; }
+      if(!t.owner && t.sub!=='barren' && rng()<success){ t.owner=col; t.str=1+gv(col,'lethality'); landed++; }
     }
     logfn(`${who(col)} fruited — mushrooms drew foragers; ${landed} new colonies took hold far off`);
     return true;
@@ -189,7 +188,7 @@ function createGame(opts={}){
   const api={ state:g, SUB, TRAITS, FACTIONS, upCost, idx, inBounds:inB, neighbors,
     owned, tilesOf, viable, share, frontier, expandCost, income, fruitReach, fruitCost,
     expand, fruit, upgrade, endTurn, beginTurn, who:c=>FACTIONS[c.faction].name,
-    actionsPerTurn:ACTIONS_PER_TURN,
+    actionsPerTurn:ACTIONS_PER_TURN, traitsFor,
     canFruit:col=>col.actions>0 && col.energy>=fruitCost(col) };
   genMap();
   return api;
@@ -198,11 +197,12 @@ function createGame(opts={}){
 // ============================================================
 //  POLICIES — how an AI faction plays a turn (also the sim's strategies)
 // ============================================================
-function play(api, col, {expandBias, fruitBias, build}){
+function play(api, col, {expandBias, fruitBias}){
   const s=api.state;
+  const build=['mycelium', api.FACTIONS[col.faction].bonus.key, 'gills', 'spores'];
   // upgrade first if flush
-  for(const key of build){ if(col.genome[key]>=5) continue;
-    if(col.energy > api.upCost(col.genome[key]) + 6){ if(api.upgrade(col,key)) break; } }
+  for(const key of build){ if((col.genome[key]||0)>=5) continue;
+    if(col.energy > api.upCost(col.genome[key]||0) + 6){ if(api.upgrade(col,key)) break; } }
   // fruit to open fronts when affordable and inclined
   if(api.canFruit(col) && s.rng() < fruitBias) api.fruit(col);
   // expand along cheapest valuable frontier while energy lasts
@@ -219,10 +219,9 @@ function play(api, col, {expandBias, fruitBias, build}){
   }
 }
 const POLICIES = {
-  balanced: (api,col)=>play(api,col,{expandBias:0.9,fruitBias:0.4,build:['diet','mycelium','toxicity','spores','gills']}),
-  blitz:    (api,col)=>play(api,col,{expandBias:1.0,fruitBias:0.2,build:['mycelium','diet','mimicry','gills']}),
-  spreader: (api,col)=>play(api,col,{expandBias:0.7,fruitBias:0.9,build:['spores','gills','diet','mycelium']}),
-  turtle:   (api,col)=>play(api,col,{expandBias:0.6,fruitBias:0.3,build:['toxicity','diet','symbiosis','mycelium']}),
+  balanced: (api,col)=>play(api,col,{expandBias:0.9,fruitBias:0.4}),
+  blitz:    (api,col)=>play(api,col,{expandBias:1.0,fruitBias:0.2}),
+  spreader: (api,col)=>play(api,col,{expandBias:0.7,fruitBias:0.9}),
 };
 
 return { createGame, POLICIES, FACTIONS, TRAITS, SUB, upCost, mulberry32 };

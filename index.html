@@ -118,7 +118,8 @@ let api,S,you,TS,mode='expand';
     const b=document.createElement('button'); b.style.borderColor=f.color+'66';
     b.innerHTML=`<div style="font-size:15px;color:${f.color}">${f.name}</div>
       <div style="color:var(--muted);font-size:11px;margin:2px 0 6px">${f.tag} · niche: ${f.niche}</div>
-      <div style="font-size:12px;line-height:1.35">${f.effect}</div>`;
+      <div style="font-size:12px;line-height:1.35">${f.effect}</div>
+      <div style="font-size:11px;line-height:1.3;margin-top:6px;color:${f.color}">✦ ${f.bonus.label} — ${f.bonus.desc}</div>`;
     b.onclick=()=>start(k); box.appendChild(b);
   }
 })();
@@ -177,12 +178,13 @@ function sync(){
   for(let i=0;i<api.actionsPerTurn;i++) acts.innerHTML+=`<div class="ap ${i<you.actions?'on':''}"></div>`;
   document.getElementById('v-fruit').disabled=!api.canFruit(you);
   document.getElementById('v-fruit').textContent=`🍄 Fruit (${api.fruitCost(you)}e)`;
-  // traits
+  // upgrades: 3 shared fruit modifiers + this faction's own chemistry
   const box=document.getElementById('traits'); box.innerHTML='';
-  for(const tr of TRAITS){ const lvl=you.genome[tr.key], c=api.upCost(lvl);
+  for(const tr of api.traitsFor(you)){ const lvl=you.genome[tr.key], c=api.upCost(lvl);
     const row=document.createElement('div'); row.className='trait';
-    row.innerHTML=`<div class="n">${tr.label}<small>${tr.desc}</small></div>
-      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip ${i<lvl?'on':''}"></div>`).join('')}</div>
+    const fc=FACTIONS[you.faction].color;
+    row.innerHTML=`<div class="n">${tr.faction?`<span style="color:${fc}">✦ ${tr.label}</span>`:tr.label}<small>${tr.desc}</small></div>
+      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip ${i<lvl?'on':''}" ${tr.faction&&i<lvl?`style="background:${fc}"`:''}></div>`).join('')}</div>
       <button class="up" ${lvl>=5||you.energy<c||you.actions<=0?'disabled':''}>${lvl>=5?'max':'+<span class=cost>'+c+'</span>'}</button>`;
     if(lvl<5) row.querySelector('button').onclick=()=>{ if(api.upgrade(you,tr.key)){logMsg('Upgraded '+tr.label+' → '+(lvl+1));render();sync();} };
     box.appendChild(row);
