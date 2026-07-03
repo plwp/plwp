@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mycelia — Dev/Test Console</title>
+<script src="./engine.js"></script>
+<style>
+  :root{
+    --bg:#0d0f0c; --panel:#161a13; --panel2:#1e241a; --ink:#e8ecdf;
+    --muted:#8a967c; --line:#2c3626; --you:#5fd08a; --rival:#c47cff;
+    --warn:#e8a13a; --danger:#e0524d; --gold:#e8c34a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex; min-height:100vh;
+  }
+  #stage{flex:1; display:flex; flex-direction:column; align-items:center; padding:14px; gap:10px; min-width:0}
+  h1{font-size:18px; margin:0; letter-spacing:.5px}
+  h1 small{color:var(--muted); font-weight:400; font-size:12px}
+  #topbar{width:100%; max-width:820px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap}
+  #hud{display:flex; gap:14px; flex-wrap:wrap; font-variant-numeric:tabular-nums}
+  .stat{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 10px}
+  .stat b{display:block; font-size:16px}
+  .stat span{color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.6px}
+  canvas{background:#0a0c09; border:1px solid var(--line); border-radius:10px; max-width:100%; height:auto; touch-action:none; cursor:pointer}
+  #hint{color:var(--muted); font-size:12px; min-height:16px; text-align:center; max-width:820px}
+  aside{width:340px; background:var(--panel); border-left:1px solid var(--line); padding:14px; overflow-y:auto; display:flex; flex-direction:column; gap:12px}
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px}
+  .card h2{margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.7px; color:var(--muted); display:flex; justify-content:space-between; align-items:center}
+  .trait{display:flex; align-items:center; gap:8px; margin:7px 0}
+  .trait .name{flex:1}
+  .trait .name small{display:block; color:var(--muted); font-size:11px; line-height:1.3}
+  .pips{display:flex; gap:3px}
+  .pip{width:9px; height:9px; border-radius:2px; background:#2c3626}
+  .pip.on{background:var(--you)}
+  .pip.on.rivalpip{background:var(--rival)}
+  button{
+    font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:7px 10px; cursor:pointer; transition:.12s;
+  }
+  button:hover:not(:disabled){border-color:var(--you); color:var(--you)}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  .up{padding:4px 9px; font-size:13px; min-width:34px}
+  #endturn{width:100%; padding:11px; font-weight:600; font-size:15px; border-color:var(--you); color:var(--you)}
+  #endturn:hover:not(:disabled){background:var(--you); color:#08130c}
+  .modebtns{display:flex; gap:6px}
+  .modebtns button{flex:1; font-size:12px; padding:8px 4px}
+  .modebtns button.active{background:var(--you); color:#08130c; border-color:var(--you)}
+  #log{font-size:12px; color:var(--muted); max-height:150px; overflow-y:auto; display:flex; flex-direction:column-reverse; gap:3px}
+  #log .l{padding:2px 0; border-bottom:1px solid #ffffff08}
+  .cost{color:var(--gold); font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap}
+  #overlay{position:fixed; inset:0; background:#000c; display:none; align-items:center; justify-content:center; z-index:9}
+  #overlay .box{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px 30px; max-width:420px; text-align:center}
+  #overlay h2{margin:0 0 8px; font-size:24px}
+  #overlay p{color:var(--muted)}
+  .legend{display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--muted); justify-content:center}
+  .sw{display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px}
+  .toggle-row{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted)}
+  .toggle-row input{accent-color:var(--you)}
+  select{font:inherit; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 6px}
+  .small-btn{font-size:11px; padding:5px 8px}
+  .rivalpanel b, .rivalpanel .name{color:var(--rival)}
+  .hidden{display:none !important}
+  #screens{position:fixed; inset:0; background:#000d; display:flex; align-items:center; justify-content:center; z-index:10; padding:16px}
+  #screens .box{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px 28px; max-width:680px; width:100%}
+  .diffrow{display:flex; gap:10px; margin-top:6px}
+  .diffrow button{flex:1}
+  .diffrow button.active{border-color:var(--you); color:var(--you)}
+  #startbtn{margin-top:18px; width:100%; padding:12px; font-weight:600; border-color:var(--you); color:var(--you)}
+  #startbtn:hover:not(:disabled){background:var(--you); color:#08130c}
+  #startbtn:disabled{opacity:.35}
+  .factioncard{flex:1; min-width:170px; text-align:left; padding:14px}
+  .factioncard.active{outline:2px solid #fff}
+  #tileinfo table{width:100%; border-collapse:collapse}
+  #tileinfo td{padding:2px 4px; font-size:12px}
+  #tileinfo td:first-child{color:var(--muted)}
+  @media(max-width:860px){ body{flex-direction:column} aside{width:100%; border-left:none; border-top:1px solid var(--line)} }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="topbar">
+    <h1>🍄 Mycelia <small>— engine-driven test console</small></h1>
+    <div id="hud">
+      <div class="stat"><b id="s-biomass">—</b><span>Biomass</span></div>
+      <div class="stat"><b id="s-growth">—</b><span>Growth left</span></div>
+      <div class="stat"><b id="s-you">—</b><span id="s-you-label">Your tiles</span></div>
+      <div class="stat"><b id="s-rival">—</b><span id="s-rival-label">Rival tiles</span></div>
+      <div class="stat"><b id="s-turn">—</b><span>Turn</span></div>
+      <div class="stat"><b id="s-pending">—</b><span>Queued (unresolved)</span></div>
+    </div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div id="hint">Click a highlighted tile to extend your mycelium into it.</div>
+  <div class="legend">
+    <span><span class="sw" style="background:#5fd08a"></span>You</span>
+    <span><span class="sw" style="background:#c47cff"></span>Rival</span>
+    <span><span class="sw" style="background:#6b4a2a"></span>Wood</span>
+    <span><span class="sw" style="background:#3f5233"></span>Soil</span>
+    <span><span class="sw" style="background:#7a6a3a"></span>Dung</span>
+    <span><span class="sw" style="background:#4a3f2a"></span>Litter</span>
+    <span><span class="sw" style="background:#222">Barren</span></span>
+    <span><span class="sw" style="background:#e8c34a"></span>Symbiotic (gold frame)</span>
+  </div>
+</div>
+
+<aside>
+  <div class="card">
+    <h2>Action</h2>
+    <div class="modebtns">
+      <button id="m-spread" class="active">🌱 Spread</button>
+      <button id="m-inspect">🔍 Inspect</button>
+    </div>
+    <div id="tileinfo" style="margin-top:8px; font-size:12px; color:var(--muted); min-height:34px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Genome <span style="text-transform:none; letter-spacing:0; font-size:11px">upgrade w/ biomass</span></h2>
+    <div id="traits"></div>
+  </div>
+
+  <button id="endturn">End Turn ▸</button>
+
+  <div class="card">
+    <h2>Dev Tools</h2>
+    <div class="toggle-row"><input type="checkbox" id="dbg-toggle"><label for="dbg-toggle">Debug: show rival genome / biomass</label></div>
+    <div style="margin-top:10px; display:flex; gap:6px; align-items:center; flex-wrap:wrap">
+      <span style="font-size:12px; color:var(--muted)">Watch mode — auto-play "you" as:</span>
+      <select id="watch-policy"></select>
+    </div>
+    <div style="display:flex; gap:6px; margin-top:8px">
+      <button id="watch-start" style="flex:1">▶ Watch AI vs AI</button>
+      <button id="watch-stop" style="flex:1" disabled>■ Stop</button>
+    </div>
+    <div style="display:flex; gap:6px; margin-top:8px">
+      <button id="btn-newgame" class="small-btn" style="flex:1">↺ New game</button>
+    </div>
+  </div>
+
+  <div class="card rivalpanel hidden" id="rival-card">
+    <h2>Rival (debug)</h2>
+    <div style="font-size:12px; margin-bottom:6px">
+      <span class="name" id="rival-name">—</span> ·
+      biomass <b id="rival-biomass">—</b> ·
+      tiles <b id="rival-tiles">—</b> ·
+      growthLeft <b id="rival-growth">—</b>
+    </div>
+    <div id="rival-traits"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+</aside>
+
+<div id="overlay"><div class="box">
+  <h2 id="ov-title"></h2>
+  <p id="ov-body"></p>
+  <button id="ov-newgame">New spore ↺</button>
+</div></div>
+
+<div id="screens">
+  <div class="box">
+    <h2 style="margin:0 0 4px">🍄 Mycelia — Dev Console</h2>
+    <p style="color:var(--muted);margin:0 0 16px">Choose your species — each has a different <b style="color:var(--ink)">effect on people</b>, your route to victory.</p>
+    <div id="factioncards" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+
+    <p style="color:var(--muted);margin:18px 0 4px">Rival difficulty</p>
+    <div class="diffrow" id="diffrow"></div>
+
+    <button id="startbtn" disabled>Start game</button>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ---------- constants tied to the fixed default grid size ----------
+const TS = 45; // px per tile (engine default grid is 16x12)
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const easeOut = x => 1 - Math.pow(1-x, 3);
+
+// ---------- runtime state ----------
+let api = null;                 // Mycelia game instance
+let mode = 'spread';             // 'spread' | 'inspect'
+let selected = null;             // selected tile (for inspect)
+let animating = false;
+let watching = false;
+let watchTimer = null;
+let debugOn = false;
+let logMessages = [];
+let pulseT = 0;                  // drives the gentle pulse on unresolved provisional claims
+let chosenFaction = null;
+let chosenDiffKey = 'generalist'; // POLICIES key for rival
+let rivalFactionKey = null;
+
+const DIFFS = [
+  {key:'greedy', label:'Easy'},
+  {key:'generalist', label:'Normal'},
+  {key:'adaptive', label:'Hard'},
+];
+
+// ============================================================
+//  START SCREEN
+// ============================================================
+function buildStartScreen(){
+  const box = document.getElementById('factioncards');
+  box.innerHTML = '';
+  for(const key in Mycelia.FACTIONS){
+    const f = Mycelia.FACTIONS[key];
+    const card = document.createElement('button');
+    card.className = 'factioncard';
+    card.style.borderColor = f.color+'55';
+    card.innerHTML = `<div style="font-size:16px;color:${f.color}">${f.name}</div>
+      <div style="color:var(--muted);font-size:11px;margin:2px 0 8px">${f.tag}</div>
+      <div style="font-size:12px;line-height:1.4">${f.effect}</div>`;
+    card.onmouseenter=()=>{ if(chosenFaction!==key) card.style.borderColor=f.color; };
+    card.onmouseleave=()=>{ if(chosenFaction!==key) card.style.borderColor=f.color+'55'; };
+    card.onclick = () => {
+      chosenFaction = key;
+      [...box.children].forEach(c=>c.classList.remove('active'));
+      card.classList.add('active');
+      card.style.borderColor = f.color;
+      document.getElementById('startbtn').disabled = false;
+    };
+    box.appendChild(card);
+  }
+
+  const diffrow = document.getElementById('diffrow');
+  diffrow.innerHTML = '';
+  for(const d of DIFFS){
+    const b = document.createElement('button');
+    b.textContent = d.label;
+    if(d.key===chosenDiffKey) b.classList.add('active');
+    b.onclick = () => {
+      chosenDiffKey = d.key;
+      [...diffrow.children].forEach(c=>c.classList.remove('active'));
+      b.classList.add('active');
+    };
+    diffrow.appendChild(b);
+  }
+}
+document.getElementById('startbtn').onclick = () => {
+  if(!chosenFaction) return;
+  startGame(chosenFaction, chosenDiffKey);
+};
+
+// ============================================================
+//  GAME BOOT
+// ============================================================
+function startGame(factionKey, diffKey){
+  stopWatch();
+  logMessages = [];
+  const others = Object.keys(Mycelia.FACTIONS).filter(k=>k!==factionKey);
+  rivalFactionKey = others[Math.floor(Math.random()*others.length)];
+
+  api = Mycelia.createGame({
+    factions:{you:factionKey, rival:rivalFactionKey},
+    rivalPolicy: Mycelia.POLICIES[diffKey],
+    log: (m)=>{ logMessages.push(m); renderLog(); }
+  });
+  // Exposed for console-driven testing/debugging (this is a dev tool) — inspect live
+  // state with e.g. `MYCELIA_DEBUG.state.you` or `MYCELIA_DEBUG.frontier(MYCELIA_DEBUG.state.you)`.
+  window.MYCELIA_DEBUG = api;
+
+  cv.width = api.state.COLS*TS; cv.height = api.state.ROWS*TS;
+  mode='spread'; selected=null; animating=false;
+
+  document.getElementById('s-you-label').textContent = Mycelia.FACTIONS[factionKey].name+' (you)';
+  document.getElementById('s-rival-label').textContent = 'Rival tiles';
+  document.getElementById('screens').style.display = 'none';
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('endturn').disabled = false;
+
+  logMessages.push(`You are ${Mycelia.FACTIONS[factionKey].name} (${Mycelia.FACTIONS[factionKey].tag}). Rival: ${Mycelia.FACTIONS[rivalFactionKey].name} — difficulty ${diffKey}.`);
+  hint(Mycelia.FACTIONS[factionKey].effect);
+  renderAll();
+}
+
+function backToStart(){
+  stopWatch();
+  api = null;
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('screens').style.display='flex';
+}
+document.getElementById('btn-newgame').onclick = backToStart;
+document.getElementById('ov-newgame').onclick = backToStart;
+
+// ============================================================
+//  RENDERING — canvas
+// ============================================================
+function render(){
+  if(!api) return;
+  const g = api.state;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const fr = (mode==='spread' && !g.over && !watching) ? new Set(api.frontier(g.you)) : new Set();
+  for(const t of g.grid){
+    const px=t.x*TS, py=t.y*TS;
+    ctx.fillStyle = api.SUB[t.sub].color; ctx.fillRect(px,py,TS,TS);
+    if(t.sub!=='barren'){
+      const dep = 1 - Math.min(1, t.nutrient/api.SUB[t.sub].nutrient);
+      ctx.fillStyle = `rgba(0,0,0,${dep*0.35})`; ctx.fillRect(px,py,TS,TS);
+    }
+    if(t.owner){
+      const col = t.owner.isYou ? '#5fd08a' : '#c47cff';
+      const grow = t.anim!=null ? easeOut(t.anim) : 1;
+      const r = (6 + (t.mass/5)*(TS/2-6)) * grow;
+      ctx.fillStyle = col+'cc';
+      ctx.beginPath(); ctx.arc(px+TS/2, py+TS/2, Math.max(0,r), 0, 7); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px+TS/2, py+TS/2, 3, 0, 7); ctx.fill();
+      if(t.symbiotic){ ctx.strokeStyle='#e8c34a'; ctx.lineWidth=2; ctx.strokeRect(px+5,py+5,TS-10,TS-10); }
+    }
+    // provisional claim: queued this planning phase, NOT yet resolved (simultaneous WeGo —
+    // ownership only changes when End Turn calls resolveOrders()). The rival's claims are
+    // never visible mid-planning (its policy runs inside endTurn, blind to yours) — this only
+    // ever fires for state.you, but we guard on isYou explicitly to be defensive either way.
+    // Drawn as a ghosted, gently pulsing blob so testers can see exactly what's queued,
+    // including tiles that will be CONTESTED if the rival also claims them this cycle
+    // (rendered on top of the current owner's blob, if any).
+    if(t.claim && t.claim.isYou){
+      const grow = t.anim!=null ? easeOut(t.anim) : 1;
+      const pulse = 0.75 + 0.25*Math.sin(pulseT/260 + (t.x*3+t.y*7));
+      const r = (6 + (Math.max(t.mass,2)/5)*(TS/2-6)) * grow;
+      ctx.save();
+      ctx.globalAlpha = 0.5 * pulse;
+      ctx.fillStyle = '#5fd08a';
+      ctx.beginPath(); ctx.arc(px+TS/2, py+TS/2, Math.max(0,r), 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([3,3]);
+      ctx.strokeStyle = '#5fd08a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px+TS/2, py+TS/2, Math.max(0,r)+3, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
+    if(fr.has(t)){
+      const ok = api.canDigest(g.you,t) && g.you.biomass>=api.spreadCost(g.you,t) && g.you.growthLeft>0;
+      ctx.strokeStyle = ok ? '#5fd08a' : '#e0524d88'; ctx.lineWidth=2;
+      ctx.strokeRect(px+2,py+2,TS-4,TS-4);
+      ctx.fillStyle = ok ? '#5fd08a' : '#e0524d'; ctx.font='10px sans-serif';
+      ctx.fillText(api.spreadCost(g.you,t), px+4, py+13);
+    }
+    ctx.strokeStyle='#00000030'; ctx.lineWidth=1; ctx.strokeRect(px,py,TS,TS);
+  }
+  if(selected){ ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(selected.x*TS+1, selected.y*TS+1, TS-2, TS-2); }
+}
+
+// ============================================================
+//  RENDERING — HUD + panels
+// ============================================================
+const GROUPS = {war:'⚔️ Conquest', def:'🛡️ Defense ⇄ Edibility', trick:'🎭 Deception', sym:'🤝 Symbiosis', repro:'🍄 Reproduction'};
+
+function renderAll(){
+  if(!api) return;
+  syncHUD();
+  renderTraitPanel();
+  renderRivalPanel();
+  render();
+}
+
+function syncHUD(){
+  const g = api.state;
+  document.getElementById('s-biomass').textContent = Math.floor(g.you.biomass);
+  document.getElementById('s-growth').textContent = g.you.growthLeft+' / '+api.maxGrowth(g.you);
+  document.getElementById('s-you').textContent = api.tilesOf(g.you);
+  document.getElementById('s-rival').textContent = api.tilesOf(g.rival);
+  document.getElementById('s-turn').textContent = g.turn;
+  document.getElementById('s-pending').textContent = g.orders.length;
+}
+
+function renderTraitPanel(){
+  const g = api.state;
+  const box = document.getElementById('traits'); box.innerHTML='';
+  let lastTag=null;
+  for(const tr of api.TRAITS){
+    if(tr.tag!==lastTag){
+      lastTag=tr.tag;
+      const h=document.createElement('div');
+      h.style.cssText='font-size:10px;letter-spacing:.6px;color:var(--muted);margin:9px 0 2px';
+      h.textContent=GROUPS[tr.tag]; box.appendChild(h);
+    }
+    const lvl=g.you.genome[tr.key], c=api.upCost(lvl);
+    const row=document.createElement('div'); row.className='trait';
+    const pips=[...Array(5)].map((_,i)=>`<div class="pip ${i<lvl?'on':''}"></div>`).join('');
+    row.innerHTML=`<div class="name">${tr.label}<small>${tr.desc}</small></div><div class="pips">${pips}</div>`;
+    const btn=document.createElement('button');
+    btn.className='up';
+    const disabled = lvl>=5 || g.you.biomass<c || g.over || watching;
+    btn.disabled = disabled;
+    btn.innerHTML = lvl>=5 ? 'MAX' : `+<span class="cost" style="margin-left:3px">${c}</span>`;
+    btn.onclick = () => {
+      if(api.upgrade(g.you, tr.key)){
+        logMessages.push(`Evolved ${tr.label} → ${g.you.genome[tr.key]}`); renderLog();
+        renderAll();
+      }
+    };
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+
+function renderRivalPanel(){
+  const g = api.state;
+  document.getElementById('rival-name').textContent = api.who(g.rival);
+  document.getElementById('rival-biomass').textContent = g.rival.biomass.toFixed(1);
+  document.getElementById('rival-tiles').textContent = api.tilesOf(g.rival);
+  document.getElementById('rival-growth').textContent = g.rival.growthLeft+' / '+api.maxGrowth(g.rival);
+  const box = document.getElementById('rival-traits'); box.innerHTML='';
+  let lastTag=null;
+  for(const tr of api.TRAITS){
+    if(tr.tag!==lastTag){
+      lastTag=tr.tag;
+      const h=document.createElement('div');
+      h.style.cssText='font-size:10px;letter-spacing:.6px;color:var(--muted);margin:7px 0 2px';
+      h.textContent=GROUPS[tr.tag]; box.appendChild(h);
+    }
+    const lvl=g.rival.genome[tr.key];
+    const row=document.createElement('div'); row.className='trait';
+    const pips=[...Array(5)].map((_,i)=>`<div class="pip rivalpip ${i<lvl?'on':''}"></div>`).join('');
+    row.innerHTML=`<div class="name">${tr.label}</div><div class="pips">${pips}</div>`;
+    box.appendChild(row);
+  }
+}
+
+function renderLog(){
+  const d=document.getElementById('log');
+  d.innerHTML='';
+  const turn = api ? api.state.turn : 0;
+  for(const m of logMessages.slice(-60)){
+    const e=document.createElement('div'); e.className='l'; e.textContent = m;
+    d.appendChild(e);
+  }
+}
+function hint(m){ document.getElementById('hint').textContent = m; }
+
+function showTileInfo(t){
+  const g = api.state;
+  const ownerName = t.owner ? api.who(t.owner) : 'unclaimed';
+  const cost = api.spreadCost(g.you, t);
+  const digestible = api.canDigest(g.you, t);
+  const claimName = t.claim ? api.who(t.claim) : null;
+  document.getElementById('tileinfo').innerHTML = `<table>
+    <tr><td>Tile</td><td>(${t.x}, ${t.y})</td></tr>
+    <tr><td>Substrate</td><td>${api.SUB[t.sub].name} (tough ${api.SUB[t.sub].tough})</td></tr>
+    <tr><td>Owner</td><td>${ownerName}</td></tr>
+    <tr><td>Pending claim</td><td>${claimName ? claimName+' (unresolved — resolves on End Turn)' : 'none'}</td></tr>
+    <tr><td>Nutrient</td><td>${t.nutrient.toFixed(2)}</td></tr>
+    <tr><td>Mass</td><td>${t.mass.toFixed(2)}</td></tr>
+    <tr><td>Symbiotic</td><td>${t.symbiotic ? 'yes 🌳' : 'no'}</td></tr>
+    <tr><td>Spread cost (you)</td><td>${t.sub==='barren'?'—':cost}</td></tr>
+    <tr><td>Digestible (you)</td><td>${digestible ? 'yes' : 'no — need more Diet'}</td></tr>
+  </table>`;
+}
+
+// ============================================================
+//  ANIMATION — WeGo resolution
+// ============================================================
+function animateChanged(changedIdx, cb){
+  if(!changedIdx || !changedIdx.length){ cb && cb(); return; }
+  animating = true;
+  document.getElementById('endturn').disabled = true;
+  const g = api.state;
+  changedIdx.forEach(i=>{ g.grid[i].anim = 0; });
+  const start = performance.now(), DUR = 650;
+  function frame(now){
+    const p = Math.min(1, (now-start)/DUR);
+    changedIdx.forEach(i=>{ g.grid[i].anim = p; });
+    render();
+    if(p<1){ requestAnimationFrame(frame); }
+    else {
+      changedIdx.forEach(i=>{ delete g.grid[i].anim; });
+      animating = false;
+      document.getElementById('endturn').disabled = g.over;
+      render();
+      cb && cb();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+function animatePop(idx){
+  // small non-blocking pop used for the player's own planning-phase spreads
+  const g = api.state;
+  g.grid[idx].anim = 0;
+  const start = performance.now(), DUR = 300;
+  function frame(now){
+    const p = Math.min(1,(now-start)/DUR);
+    g.grid[idx].anim = p;
+    render();
+    if(p<1) requestAnimationFrame(frame);
+    else { delete g.grid[idx].anim; render(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function showOverlay(){
+  const g = api.state;
+  const titles = {you:'🍄 Victory!', rival:'Colony lost', draw:'Season draw'};
+  document.getElementById('ov-title').textContent = titles[g.winner] || 'Game over';
+  document.getElementById('ov-body').textContent =
+    `Reason: ${g.reason}. Final — you ${api.tilesOf(g.you)} tiles, rival ${api.tilesOf(g.rival)} tiles, turn ${g.turn}.`;
+  document.getElementById('overlay').style.display='flex';
+}
+
+// ============================================================
+//  INPUT — end turn
+// ============================================================
+document.getElementById('endturn').onclick = () => {
+  if(!api || animating || api.state.over || watching) return;
+  const {changed} = api.endTurn();
+  syncHUD(); renderTraitPanel(); renderRivalPanel();
+  animateChanged(changed, ()=>{
+    if(api.state.over) showOverlay();
+  });
+};
+
+// ---------- canvas click ----------
+cv.addEventListener('click', e=>{
+  if(!api || api.state.over || watching) return;
+  const g = api.state;
+  const r = cv.getBoundingClientRect();
+  const x = Math.floor((e.clientX-r.left)/(r.width/g.COLS));
+  const y = Math.floor((e.clientY-r.top)/(r.height/g.ROWS));
+  if(x<0||y<0||x>=g.COLS||y>=g.ROWS) return;
+  const t = g.grid[g.COLS*y+x];
+  if(mode==='inspect'){ selected=t; showTileInfo(t); render(); return; }
+  const fr = new Set(api.frontier(g.you));
+  if(fr.has(t)){
+    if(animating) return;
+    if(api.trySpread(g.you, t)){
+      syncHUD(); renderTraitPanel();
+      hint(t.owner && !t.owner.isYou
+        ? 'Claim queued — contested tile, resolves (push-force) on End Turn.'
+        : 'Claim queued — resolves on End Turn.');
+      animatePop(g.COLS*y+x);
+    } else {
+      hint('Cannot spread there — check growth left, biomass, or digestibility.');
+    }
+  } else {
+    selected = t; showTileInfo(t); render();
+  }
+});
+
+document.getElementById('m-spread').onclick = ()=>setMode('spread');
+document.getElementById('m-inspect').onclick = ()=>setMode('inspect');
+function setMode(m){
+  mode=m;
+  document.getElementById('m-spread').classList.toggle('active', m==='spread');
+  document.getElementById('m-inspect').classList.toggle('active', m==='inspect');
+  hint(m==='spread' ? 'Click a highlighted tile to spread.' : 'Click any tile to inspect it.');
+  render();
+}
+
+// ============================================================
+//  DEBUG TOGGLE
+// ============================================================
+document.getElementById('dbg-toggle').onchange = (e)=>{
+  debugOn = e.target.checked;
+  document.getElementById('rival-card').classList.toggle('hidden', !debugOn);
+};
+
+// ============================================================
+//  WATCH AI vs AI
+// ============================================================
+(function initWatchSelect(){
+  const sel = document.getElementById('watch-policy');
+  for(const key in Mycelia.POLICIES){
+    const o=document.createElement('option'); o.value=key; o.textContent=key;
+    if(key==='generalist') o.selected=true;
+    sel.appendChild(o);
+  }
+})();
+
+document.getElementById('watch-start').onclick = ()=>{
+  if(!api || api.state.over) return;
+  watching = true;
+  document.getElementById('watch-start').disabled = true;
+  document.getElementById('watch-stop').disabled = false;
+  document.getElementById('endturn').disabled = true;
+  hint('Watching AI vs AI — click Stop to take back control.');
+  watchStep();
+};
+document.getElementById('watch-stop').onclick = stopWatch;
+function stopWatch(){
+  watching = false;
+  clearTimeout(watchTimer); watchTimer=null;
+  document.getElementById('watch-start').disabled = false;
+  document.getElementById('watch-stop').disabled = true;
+  if(api){ document.getElementById('endturn').disabled = api.state.over; renderTraitPanel(); }
+}
+function watchStep(){
+  if(!watching || !api) return;
+  if(api.state.over){ stopWatch(); return; }
+  const policyKey = document.getElementById('watch-policy').value;
+  const policyFn = Mycelia.POLICIES[policyKey] || Mycelia.POLICIES.generalist;
+  policyFn(api, api.state.you);
+  const {changed} = api.endTurn();
+  syncHUD(); renderTraitPanel(); renderRivalPanel();
+  animateChanged(changed, ()=>{
+    if(api.state.over){ stopWatch(); showOverlay(); return; }
+    if(!watching) return;
+    watchTimer = setTimeout(watchStep, 350);
+  });
+}
+
+// ============================================================
+//  IDLE PULSE LOOP — keeps unresolved provisional claims gently pulsing during
+//  planning, without interfering with the blocking WeGo resolution animation.
+// ============================================================
+function pulseLoop(ts){
+  pulseT = ts;
+  if(api && !animating && !watching && !api.state.over && api.state.orders.length>0){
+    render();
+  }
+  requestAnimationFrame(pulseLoop);
+}
+requestAnimationFrame(pulseLoop);
+
+// ============================================================
+//  BOOT
+// ============================================================
+buildStartScreen();
+})();
+</script>
+</body>
+</html>
