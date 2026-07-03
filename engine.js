@@ -60,7 +60,7 @@ function createGame(opts={}){
   const logfn=opts.log||(()=>{});
   const facs=opts.factions||FKEYS.slice();
   const playerFaction=opts.playerFaction||facs[0];
-  const SPORE_CAP=40, N_FORAGERS=Math.round(COLS*ROWS/44);
+  const SPORE_CAP=40, N_FORAGERS=Math.round(COLS*ROWS/64), MAXTICKS=opts.maxTicks||2200;
 
   const g={ COLS, ROWS, rng, tick:0, over:false, winner:null, winnerCol:null, reason:null,
             grid:[], colonies:[], foragers:[] };
@@ -99,12 +99,12 @@ function createGame(opts={}){
   const open=()=>g.grid.filter(t=>!t.owner && t.sub!=='barren').length;
   const MAXLVL=c=>3+gv(c,'mycelium');
 
-  // ---- bloom: organic local spread ----
+  // ---- bloom: organic local spread (slow creep — a 15-30 min game) ----
   function bloom(col){
     const mine=owned(col); if(!mine.length) return;
-    col.buf += 1.2 + gv(col,'mycelium')*0.8 + gv(col,'taste')*0.4;
+    col.buf += 0.12 + gv(col,'mycelium')*0.09 + gv(col,'taste')*0.05;
     let budget=Math.floor(col.buf); col.buf-=budget;
-    for(const t of mine){ const mx=MAXLVL(col); if(t.lvl<mx && rng()<0.10) t.lvl++; }
+    for(const t of mine){ const mx=MAXLVL(col); if(t.lvl<mx && rng()<0.06) t.lvl++; }
     let guard=0;
     while(budget>0 && guard++<600){
       const src=mine[Math.floor(rng()*mine.length)];
@@ -149,13 +149,20 @@ function createGame(opts={}){
       const own=cur.fruit.owner;
       if(gv(own,'lethality')>0 && rng()<0.25+gv(own,'lethality')*0.12){  // toxic fruit poisons it
         respawnForager(f); return; }
-      f.load=own; f.carry=3 + gv(own,'spores')*2 + gv(own,'psychotropic')*3;
+      f.load=own; f.carry=1 + gv(own,'spores')*0.8 + gv(own,'psychotropic')*0.7;
       cur.fruit.ripe--; if(cur.fruit.ripe<=0) cur.fruit=null;
+      // OVER-FORAGING: FOOD foragers (Taste) are gentle — they eat and leave your
+      // mycelium fine. PSYCHOTROPIC foragers trip and trample, chewing your ground
+      // down — so Psilocybe's huge reach comes at a real cost to its own web.
+      const swarm = g.foragers.filter(o=>Math.abs(o.x-cur.x)+Math.abs(o.y-cur.y)<=1).length;
+      if(rng() < (gv(own,'psychotropic')*0.16 + swarm*0.02)){ cur.lvl--;
+        if(cur.lvl<=0){ cur.owner=null; cur.lvl=0; if(own.isYou) logfn('💀 Tripping foragers wrecked a tile back to bare ground'); }
+        else if(own.isYou) logfn('😵‍💫 Tripping foragers trampled some of your mycelium'); }
     }
   }
   function respawnForager(f){ f.load=null; f.carry=0; f.x=Math.floor(rng()*COLS); f.y=Math.floor(rng()*ROWS); }
 
-  function accrue(col){ col.spore=Math.min(SPORE_CAP, col.spore + 1 + tilesOf(col)*0.12); }
+  function accrue(col){ col.spore=Math.min(SPORE_CAP, col.spore + 0.4 + tilesOf(col)*0.03); }
 
   // ---- actions ----
   function fruit(col,t){                          // grow a fruiting body on one of your tiles
@@ -188,7 +195,10 @@ function createGame(opts={}){
     const v=viable(), alive=g.colonies.filter(c=>tilesOf(c)>0);
     if(alive.length<=1 && g.colonies.length>1) return finish(alive[0],'domination');
     for(const c of g.colonies) if(tilesOf(c)>v*0.5) return finish(c,'majority');
-    if(open()===0){ const r=g.colonies.slice().sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'full'); }
+    // end once the forest is essentially full (skip the slow tail of isolated tiles)
+    if(open() <= v*0.03){ const r=[...g.colonies].sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'full'); }
+    // hard ceiling so a game can never overstay its welcome
+    if(g.tick>=MAXTICKS){ const r=[...g.colonies].sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'season'); }
   }
   function finish(col,reason){ g.over=true; g.winnerCol=col||null; g.winner=col?col.faction:null; g.reason=reason; }
 

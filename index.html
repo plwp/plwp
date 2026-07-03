@@ -212,7 +212,7 @@ document.getElementById('speed').onclick=()=>{ speed=speed>=4?1:speed*2;
   document.getElementById('speed').textContent=speed+'×'; loop(); };
 
 function loop(){ if(timer)clearInterval(timer); if(!playing||S.over)return;
-  timer=setInterval(()=>{ api.tick(); render(); syncPanel(); if(S.over){clearInterval(timer);endScreen();} }, 260/speed); }
+  timer=setInterval(()=>{ api.tick(); render(); syncPanel(); if(S.over){clearInterval(timer);endScreen();} }, Math.round(850/speed)); }
 
 function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.tick:0;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='['+t+'] '+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
 function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou, wn=S.winner?FACTIONS[S.winner].name:'No one';
