@@ -1,218 +1,170 @@
-# Mycelia — Mechanics Design
+# Mycelia — Mechanics Design (v2: Ecology of Dominance)
 
-A turn-based area-of-control strategy game where you play a fungal colony
-min-maxing its biology — mycelium, diet, toxicity, psychotropics, symbiosis,
-gills, spores, fruiting — to dominate a patch of forest floor.
+A turn-based **ecology** game. You are a fungal faction competing — never by
+attacking — to grow the largest **self-sustaining web** of your fungus and its
+allies on a shared forest floor. You win by building the healthiest, most
+dominant equilibrium: **homeostasis is the means, dominance is the score.**
 
-> **Status:** lofi mechanics prototype. We are proving the *systems* first.
-> Procedural beauty and the final engine (Godot/Unity/etc.) come later — none
-> of the decisions here are married to JavaScript. `engine.js` is the canonical
-> ruleset; `index.html` is a throwaway test skin; `sim.js` is the balance lab.
+> This supersedes the v1 conquest model. No tile ownership, no overtaking, no
+> combat. Fungi don't fight — they out-decompose, out-partner, and out-disperse.
+> `engine.js` / `sim.js` / `index.html` are being rebuilt to this spec; the v1
+> conquest code is superseded.
 
 ---
 
-## 1. The core fantasy
+## 1. The core loop
 
-You are not a general — you are an organism. You don't command units, you
-*evolve* and *spread*. Winning isn't only conquest: mushrooms have ways to
-propagate that a tank column doesn't — they get **eaten**, **mistaken for
-something else**, and **partnered with**. That's the design's whole reason to
-exist. Area-of-control on its own is a wargame; the non-conquest vectors are
-what make it a *mushroom* game.
+The forest floor is **shared ground**. Every tile holds finite, slowly
+regenerating **resource pools** (wood/lignin, dung, leaf litter, soil humus).
+Any number of colonies can occupy the same tile — occupation is graded biomass,
+not exclusive ownership. Each cycle you:
 
-## 2. Three routes to victory
+1. **Extract** — your biomass on a tile consumes the resources your Diet can
+   digest, growing your local biomass.
+2. **Direct growth** — spend energy to seed presence into new tiles, or evolve
+   traits (the min-max).
+3. **Disperse** — desirable/allied fungi get carried to distant tiles by
+   foragers.
+4. The world regenerates pools, grazers nibble, seasons turn — and everyone's
+   **Dominance** is recomputed and shown.
 
-Every faction and build is really choosing a mix of three ways to take ground:
+There is no attack action. The only pressure on a rival is **ecological**:
+competing for a resource you both eat, or out-growing them into a niche.
 
-| Route | Fantasy | Key traits | Vector |
+## 2. Niche partitioning — why peace is the default
+
+The central idea, in your words: *a wood-eater and a shit-eater can share a
+tile.* They eat different resource pools, so they don't compete — they coexist.
+Competition only happens when two colonies want the **same** resource (or the
+shared **soil** pool everyone can weakly use).
+
+- **Diet** is now a *niche* stat. A **specialist** (high efficiency on one
+  resource) dominates its niche but is fragile if that resource crashes. A
+  **generalist** (broad Diet) eats many pools inefficiently — flexible, but
+  competes with everyone and masters nothing.
+- Coexistence is the resting state; scarcity is what creates conflict. This is
+  what makes it *not* a wargame.
+
+## 3. Factions = a keystone + its allied web
+
+A faction is not just a mushroom — it's the center of a network of symbiotic
+**people, animals, and plants**. Growing that web *is* the game.
+
+| Faction | Niche | Effect on people | Allied web |
 |---|---|---|---|
-| **Conquest** | Creep over everything | Mycelium, Diet | Your own hyphae |
-| **Deception** | Trick foragers into carrying you | Mimicry, Edibility, Psychotropics | Animals & humans |
-| **Symbiosis** | Partner instead of fight | Symbiosis | Host trees |
+| **Amanita — Deceiver** | Litter / mycorrhizal | Delirium, iconic → admired & picked | Host trees (mycorrhiza), deceived foragers |
+| **Psilocybe — Prophet** | **Dung** (coprophilic) | Psychedelic → humans cultivate & protect | Human cultivators, grazing animals |
+| **Boletus — Feast** | **Wood** (saprobic) | Choice edible → foraged & carried far | Foragers, forest hosts |
 
-These are deliberately in tension. **Toxicity and Edibility oppose each
-other** (poison keeps foragers away; being tasty invites them). **Mimicry is
-the cheat that bridges them** — look edible while staying toxic, and you get
-dispersal *without* being eaten. That triangle is the heart of the min-max.
+Each faction naturally sits in a **different niche**, so three factions on one
+board coexist by default — and the game becomes about who grows their web
+biggest, not who kills whom.
 
-## 3. Factions — defined by their *effect on people*
+## 4. Dispersal — desirability is pull, and it's steal-able
 
-The three major real-world types map cleanly onto the three routes. Each is
-defined by what it does to the humans/animals that encounter it:
+Spread happens by being *wanted*, not by pushing hyphae alone:
 
-- **Amanita — "The Deceiver."** Beautiful, iconic, toxic-yet-psychoactive.
-  Effect: delirium & poison. People pick it anyway because it's striking →
-  **deception** route. Bias: Toxicity, Mimicry.
-- **Psilocybe — "The Prophet."** Psychedelic. Effect: humans *deliberately
-  cultivate and protect* it and plant it far and wide → the strongest
-  human-dispersal vector. Bias: Psychotropics, Spores.
-- **Boletus — "The Feast."** Choice edible. Effect: eaten and carried
-  everywhere → huge reach, but you lose fruiting bodies → **edibility** route.
-  Bias: Edibility, Diet, Gills.
+- **Edibility / Psychotropics → foraging → spread.** A choice edible or a
+  psychoactive fungus makes foragers seek it out; being carried off plants you
+  in distant tiles. Reach comes from being desirable.
+- **Foragers are faction-affiliated.** Each faction has its own dispersers
+  (its people/animals). They spread *their* faction.
+- **Mimicry hijacks the enemy's forager.** *This is the signature mechanic.* A
+  convincing lookalike gets picked up by a **rival faction's** forager and
+  rides *their* dispersal network — you parasitize their people/animals to
+  spread yourself, for free, into their territory. Deception as logistics.
+- **Toxicity** is the counter-pressure: it keeps *your* dispersers away
+  (bad for spread) but protects you from grazers. It also makes a mimic's life
+  hard — a toxic lookalike that gets eaten poisons the disperser, training them
+  off you. Toxicity ⇄ Edibility remains the core tension; Mimicry still bridges.
 
-## 4. The genome (ten traits, 0–5)
+## 5. Symbiosis — building the web
 
-Grouped by route. Upgrading spends biomass; cost rises per level (`8 + 7·lvl`).
+Symbiosis is the engine of dominance, not a side stat:
 
-- **Conquest** — *Mycelium* (cheaper spread + more growth/cycle), *Diet*
-  (nutrient extraction; unlocks tough substrates like wood).
-- **Defense ⇄ Edibility** — *Toxicity* (repels grazers, but foragers avoid
-  you), *Edibility* (foragers spread you far, but you're grazed harder).
-- **Deception** — *Mimicry* (get picked while toxic; cheaper to overtake a
-  rival by blending in), *Psychotropics* (manipulated grazers become
-  long-range spore carriers).
-- **Symbiosis** — *Symbiosis* (bond with wood/host tiles: passive food,
-  ungrazable).
-- **Reproduction** — *Gills* (spores per fruiting), *Spores* (germination
-  range & success), *Fruit cycle* (fruit sooner).
+- **Plants** — mycorrhizal bonds with host trees: a stable resource supply that
+  doesn't deplete, buffering you against boom-bust (the strongest homeostasis
+  tool).
+- **Animals** — partnered grazers/insects that disperse you and don't eat you.
+- **People** — cultivators (Psilocybe's edge) who plant and protect you.
 
-## 5. Dispersal vectors — the spectrum of "who moves you"
+Every ally you add both **feeds** your web (more sustainable production) and
+**spreads** it (more dispersal). That compounding is what eventually makes a
+faction dominant — and what the Dominance meter tracks.
 
-Mushrooms spread three ways, and the game models a spectrum from *pure damage*
-to *pure help*:
+## 6. Homeostasis, Dominance, and legibility
 
-1. **Insects & slugs (grazers)** — just eat you, no dispersal. Damage tiles.
-   Countered by **Toxicity**; worsened by **Edibility**; nullified by
-   **Symbiosis** (host protection).
-2. **Animals — non-human foragers** (squirrels, deer, boar) — eat you *and*
-   carry you a medium distance. The middle of the spectrum: you lose the fruit
-   body but gain reach. Driven by **Edibility**.
-3. **Humans** — the long-range vector, and the most interesting because it's
-   *manipulable*:
-   - Edible → picked, eaten, carried far (Boletus).
-   - Mimic/iconic → picked *despite* being toxic; you keep the tile (Amanita).
-   - Psychoactive → *cultivated*: deliberately propagated and protected, the
-     best dispersal of all, and you're never "eaten" (Psilocybe).
+The tension to solve: an ecosystem has no scoreboard, but the game must make it
+**clear who's winning**, allow comebacks, and end decisively. The resolution:
 
-This is the axis that keeps the game from being Risk-with-spores.
+- **Dominance meter** (always on screen, per faction) = the share of the
+  ecosystem's **sustainable** production your web captures. Your biomass + allied
+  biomass, **discounted when you overshoot** (extracting faster than pools
+  regenerate). A big-but-crashing web scores *less* than a smaller stable one.
+- **Homeostasis is the means:** only a balanced web keeps compounding; an
+  overshooting web depletes its pools, dies back, and its Dominance visibly
+  falls. So "healthiest equilibrium wins" and "most dominant faction wins" are
+  the *same number*.
+- **Comeback window:** while niches are still contestable, a trailing faction
+  can specialize into an unclaimed niche or hijack a rival's foragers to surge.
+- **Decisive / merciful end:** once a web's allies feed its spread which grows
+  more allies, it self-reinforces past a threshold and snowballs — Dominance
+  runs away and the season is called. No slog: the meter makes the outcome
+  legible before the map is fully saturated.
 
-## 6. Economy & the two budgets (RTS feel, no macro)
+## 7. Turn model (unchanged from v1)
 
-Two resources gate everything, and they're deliberately *both* scarce so no
-single stat runs away:
+Simultaneous **WeGo**: everyone plans blind, then the world resolves together —
+and here it's *automatically* fair, because shared-tile resource competition
+splits proportionally regardless of order (co-occupation means there's nothing
+to "grab first"). Plays back as an animated resolution: creeping mycelium,
+foragers moving, webs lighting up. Feels real-time, zero APM.
 
-- **Biomass** — the spendable pool. Earned by metabolising owned tiles (Diet ×
-  substrate nutrient, minus depletion). Spent on spreading and evolving.
-- **Growth budget** — how many new tiles the mycelium can claim *per cycle*
-  (`2 + 1.3·Mycelium`), regardless of how rich you are. This is the key
-  anti-macro lever: you can't dump a war chest into a turn-one land grab, so
-  turns stay deliberate and Mycelium is meaningful.
-- **Territory upkeep** — every held tile costs biomass each turn (`0.28/tile`).
-  Sprawl you can't feed starves. Forces "quality vs quantity."
+## 8. What the simulator must now prove
 
-## 7. Turn model — simultaneous WeGo ("seems real-time, is turn-based")
+The sim (`sim.js`) pivots from win-rates to **ecosystem health**:
 
-**No first mover.** Both colonies plan *blind* to each other during the same
-planning phase, then all orders resolve **simultaneously**:
+- **Skill gradient** — do smarter niche/web choices reliably beat naive ones?
+  (If not, there's no game.)
+- **Coexistence vs. competition** — do differently-niched factions actually
+  coexist, and same-niche ones actually clash?
+- **Legibility** — does the Dominance meter predict the winner well before the
+  end? (It should — that's "clear who's winning.")
+- **Boom-bust rate** — how often do webs overshoot and crash? Some is dramatic;
+  too much is random.
+- **Decisiveness / pacing** — seasons resolve in a bounded, ≤30-min number of
+  cycles without a slog.
 
-1. `beginTurn` refills both growth budgets (plus any rubber-band catch-up).
-2. Planning — the player queues spread claims and evolves traits. Claims are
-   *provisional* (they show as intent and spend budget, but don't finalise).
-3. `endTurn` — the AI plans blind, then **`resolveOrders`** settles every
-   claim together. Two colonies claiming the same tile → resolved by a fair
-   *push* (Mycelium + local mass + a little randomness), not by who clicked
-   first. Then the world (metabolism, grazers, foragers, fruiting) resolves for
-   both in a randomised order.
-4. The UI plays this back as a ~0.7s animated **bloom** — it *looks* real-time
-   (creeping, growing), but there's zero APM pressure.
+## 9. Traits (reframed for the ecology)
 
-Why it matters: the simulator proved a plain "you-resolve-first" model gave the
-first seat a real edge. Simultaneous resolution is both the *fairness* fix and
-the *"feels alive"* feature — the same mechanic.
+- **Diet** — niche breadth & extraction efficiency (specialist ⇄ generalist).
+- **Mycelium** — seeding reach & cost; how fast the network grows across tiles.
+- **Toxicity** — grazer defense; repels your own dispersers.
+- **Edibility** — desirability to foragers → dispersal (and grazing risk).
+- **Mimicry** — hijack rival factions' foragers; pass as a prized species.
+- **Psychotropics** — manipulate dispersers; cultivation appeal.
+- **Symbiosis** — build the allied web (plants/animals/people); anti-crash.
+- **Gills / Spores / Fruit cycle** — spore output, dispersal range/success,
+  fruiting cadence.
 
-## 8. Emotional arc — engineering the comeback (the Rocket League problem)
+## 10. Mechanics mined from the canon (still relevant)
 
-Goal: matches should **feel close, allow real comebacks, never let you see the
-ending coming — and once decided, end quickly and mercifully.** We treat this as
-measurable, not vibes (see `sim.js`).
+- **Civ / SimCity / ecology sims** — carrying capacity, tile resources,
+  boom-bust; the new north star.
+- **Dune II** — resource richness on shared ground drives where you invest.
+- **Total Annihilation** — flow economy: production as a *rate* (regen vs.
+  extraction), not a stockpile.
+- **Space 4X (MoO / Spore / Sins)** — tech-tree-as-identity (the genome) and
+  seeding distant tiles (dispersal) as the expansion phase.
+- **Rocket League** — the legibility + decisive-comeback discipline applied to
+  the Dominance meter.
 
-**Two-phase momentum** (the core of the arc):
-- **Contested phase** (margin < ~18% of held tiles) — the *trailer* gets a
-  +1 growth/cycle catch-up. This is the comeback window: a fair leg-up (the
-  leader still leads) that gives a *real, skill-driven chance* to turn it
-  around. The leader must actively **defend** the lead — hold tiles with
-  Toxicity/Symbiosis, counter-contest with Mimicry — to keep it.
-- **Decided phase** (margin ≥ ~28%) — the momentum *flips to the leader*
-  (+2–3 growth), so a genuinely-won game closes out fast instead of the loser
-  slogging through a lost position. It's fair because the trailer had the whole
-  contested window, with help, to convert — and failed.
-- **Mercy win** — a decisive margin (>42%) that *holds for 3 turns* ends the
-  match outright. It must persist, so it reflects real control, not a spike.
+## 11. Roadmap
 
-Plus organic pressures: **depletion + upkeep** mean a land-rush lead decays if
-it isn't consolidated (another built-in comeback lever).
-
-**Latest simulated numbers** (150 games/matchup): ~14 turns ≈ 13 min; blowout
-rate **19%** (down from 41% pre-mercy); loser-slog **4.0** turns; **37%** of
-turns neck-and-neck; comeback rate **20%**. The live tension: a punchier,
-merciful game leaves *less* runway for comebacks — **the width of the contested
-window is the master dial** we tune between "dramatic" and "decisive."
-
-**Metrics tracked:** lead-changes/game, % neck-and-neck, comeback rate (winner
-was down 3+ tiles), blowout rate, loser-slog turns, season-timeouts.
-
-## 9. The adversarial AI — challenging but fair
-
-The opponent (`POLICIES.adaptive`) **cheats nothing** — identical economy,
-growth budget, and actions the player has. It's "hard" purely by *reading the
-board*: it counters a toxic turtle with mimicry, races an over-expander,
-consolidates when ahead, and pressures the leader's frontier when behind.
-Difficulty tiers are just *policies*, not resource bonuses:
-Easy = greedy, Normal = generalist, Hard = adaptive.
-
-Simulated over both seats vs every archetype it averages **~64%** — it beats
-weak builds decisively but *loses* to a well-played deceiver (~37%). That's the
-target: tough, learnable, beatable.
-
-## 10. Mechanics mined from the RTS/4X canon
-
-What we borrowed, and how it's reshaped for an organism with no unit micro:
-
-- **Dune II** — the *spice economy on contested ground*. Ours: rich substrates
-  (wood/dung) are the "spice" — high payoff but tough to digest (need Diet) and
-  worth fighting over. Harvest-vs-hold tension without harvesters.
-- **Warcraft** — *factions with distinct identities* and *upkeep*. Ours: the
-  three mushroom types play genuinely differently (deception vs cultivation vs
-  feast), and territory upkeep echoes WC3's upkeep tax on over-expansion.
-- **Civilization** — *tile improvement, borders, and terrain*. Ours: substrate
-  type and nutrient depletion make *where* you grow matter; symbiosis is a
-  "tile improvement" that upgrades a wood tile into a passive engine.
-- **Total Annihilation** — *flow economy & streaming production* (energy/metal
-  as rates, not stockpiles). Ours: biomass is a flow (metabolise → spend), and
-  the growth budget is a per-cycle *rate* cap — you optimise throughput, not a
-  bank. TA's "reclaim the battlefield" ≈ our depletion/dispersal recycling.
-- **Space 4X (Master of Orion / Sins of a Solar Empire / Spore)** — *tech trees
-  as identity* and *colonisation by seeding distant worlds*. Ours: the genome
-  **is** the tech tree, and spore dispersal / human cultivation is literally
-  "colonise a distant tile you can't reach by land" — the 4X expansion phase,
-  compressed.
-- **Modern touchstones** — auto-battler "set-up then watch" (TFT) and Rocket
-  League's comeback engineering directly shape §7–8: plan quietly, watch it
-  resolve, and never let a match feel decided too early.
-
-## 11. Open balance questions (what the sim is telling us)
-
-Current findings from `node sim.js` (see output for live numbers):
-
-- ❌ **Edibility/Boletus is underpowered** (~16% build win rate). The
-  eaten-and-lose-a-tile cost outweighs the reach. *Fix ideas:* dispersal from
-  being eaten should be much larger, or eaten tiles should leave a spore
-  deposit instead of vanishing.
-- ❌ **Psychotropics/psychonaut is weak** (~35%). The manipulated-grazer payoff
-  is too situational. *Fix ideas:* make psychotropics also convert adjacent
-  enemy grazing pressure, or guarantee a dispersal on deterral.
-- ⚠️ **Raw expansion (rusher/generalist) is still strongest.** Conquest slightly
-  over-rewarded vs the exotic routes — we want all three routes viable.
-- ⚠️ **Blowouts ~39%, lead-changes ~0.6/game.** Comeback tension is present but
-  thin; the rubber-band is currently gentle and can be strengthened.
-
-## 12. Roadmap
-
-1. **Now:** lock the mechanics in `engine.js`; use `sim.js` to balance the
-   three routes until each is viable and blowouts drop.
-2. **Next:** richer board (biomes, seasons/weather affecting fruiting, more
-   substrates), more factions, biomass *sinks* (defensive structures, big
-   fruitings) so biomass stops pooling.
-3. **Later:** port `engine.js` to the real engine; invest in **procedurally
-   generated beauty** — organic mycelium growth, fruiting animations,
-   generated forest floors — now that the systems are proven.
+1. **Now:** rebuild `engine.js` to the ecology/dominance model; rebuild `sim.js`
+   to measure §8; confirm a skill gradient and legibility exist.
+2. **Next:** tune niches so all three factions are viable; add the allied-web
+   layer (plants/animals/people as trackable entities); rebuild the UI around
+   the Dominance meter.
+3. **Later:** port to the real engine; invest in procedurally generated beauty
+   — organic mycelial growth, fruiting, generated forest floors and their webs.
