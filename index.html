@@ -3,223 +3,150 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mycelia — Living Forest Prototype</title>
+<title>Mycelia — Tactical Duel</title>
 <style>
   :root{ --bg:#0e100d; --panel:#171b14; --panel2:#1f261b; --ink:#e9ede1; --muted:#8f9b82;
-    --line:#2d3726; --accent:#6ad08c; }
+    --line:#2d3726; --you:#e8c34a; --foe:#e0524d; }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
-  body{background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;min-height:100vh}
-  #stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:12px;gap:9px;min-width:0}
-  h1{font-size:16px;margin:0;letter-spacing:.5px}h1 small{color:var(--muted);font-weight:400;font-size:12px}
-  #top{width:100%;max-width:760px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-  #terrbar{display:flex;height:22px;width:100%;max-width:760px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:#0a0c08}
-  #terrbar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#0a0c08;transition:width .3s;overflow:hidden}
-  #coach{width:100%;max-width:760px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.4}
-  #coach b{color:var(--ink)}
-  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:10px;max-width:100%;height:auto;cursor:crosshair}
-  #hint{color:var(--muted);font-size:12px;min-height:15px;text-align:center;max-width:760px}
-  .controls{display:flex;gap:6px;align-items:center}
-  aside{width:300px;background:var(--panel);border-left:1px solid var(--line);padding:13px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
-  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px}
-  .card h2{margin:0 0 7px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
-  .stat{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;margin:3px 0}
-  .spore{height:20px;background:#0c1109;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative;margin-top:4px}
-  .spore .f{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#8a6cc4,#c47cff);transition:width .2s}
-  .spore .l{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;text-shadow:0 1px 2px #000}
-  button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;transition:.12s}
-  button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-  button:disabled{opacity:.4;cursor:not-allowed}
-  #fruitbtn{width:100%;padding:10px;font-weight:600;border-color:#c47cff;color:#c47cff;margin-top:8px}
-  #fruitbtn.active{background:#c47cff;color:#160a1e}
-  .trait{display:flex;align-items:center;gap:8px;margin:6px 0}
-  .trait .n{flex:1}.trait .n small{display:block;color:var(--muted);font-size:11px;line-height:1.2}
-  .pips{display:flex;gap:3px}.pip{width:9px;height:9px;border-radius:2px;background:#2d3726}
-  .up{padding:4px 8px;font-size:12px;min-width:44px}
-  .cost{color:#c47cff;font-size:11px}
-  #log{font-size:12px;color:var(--muted);max-height:110px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
-  .ov{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:10}
-  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 28px;max-width:600px;text-align:left}
-  .fcards{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.fcards button{flex:1;min-width:150px;text-align:left;padding:12px}
-  @media(max-width:900px){
-    body{flex-direction:column}
-    #stage{padding:8px;gap:7px}
-    aside{width:100%;border-left:none;border-top:1px solid var(--line);overflow:visible;padding:11px 11px 30px}
-    /* big, thumb-friendly controls; no tiny scroll box */
-    #fruitbtn{padding:16px;font-size:17px}
-    .controls button{padding:10px 14px;font-size:14px}
-    /* upgrades as a 2-up grid of tappable cards instead of a tall list */
-    #traits{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    .trait{flex-direction:column;align-items:stretch;gap:6px;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px}
-    .trait .pips{justify-content:center}.pip{width:12px;height:12px}
-    .up{width:100%;padding:11px;font-size:15px}
-    #log{max-height:70px}
-  }
+  html,body{margin:0;min-height:100%}
+  body{background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:14px;gap:12px;min-height:100vh}
+  h1{font-size:18px;margin:0}h1 small{color:var(--muted);font-weight:400;font-size:13px}
+  #bar{width:100%;max-width:520px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .score{display:flex;gap:14px;font-variant-numeric:tabular-nums;font-size:14px}
+  .score b{font-size:18px}
+  #coach{width:100%;max-width:520px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--you);
+    border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.4}#coach b{color:var(--ink)}
+  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:12px;touch-action:manipulation}
+  #hint{color:var(--muted);font-size:13px;min-height:18px;text-align:center;max-width:520px}
+  .acts{display:flex;gap:8px;width:100%;max-width:520px}
+  .acts button{flex:1;padding:12px 6px;font-size:14px;background:var(--panel);color:var(--ink);border:1px solid var(--line);
+    border-radius:10px;cursor:pointer;transition:.12s;display:flex;flex-direction:column;align-items:center;gap:3px}
+  .acts button small{color:var(--muted);font-size:10.5px;font-weight:400}
+  .acts button:hover:not(:disabled){border-color:var(--you)}
+  .acts button.sel{border-color:var(--you);background:#2a2f16;color:var(--you)}
+  .acts button:disabled{opacity:.4;cursor:not-allowed}
+  #log{width:100%;max-width:520px;font-size:12px;color:var(--muted);max-height:88px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+  .ov{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
+  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;max-width:460px;text-align:left}
+  .ov h2{margin:0 0 8px}
 </style>
 </head>
 <body>
-<div id="stage">
-  <div id="top">
-    <h1>🍄 Mycelia <small>— a living forest floor</small></h1>
-    <div class="controls">
-      <button id="play">⏸ Pause</button>
-      <button id="speed">1×</button>
-      <span style="font-size:12px;color:var(--muted)">tick <b id="tick" style="color:var(--ink)">0</b></span>
-    </div>
+  <div id="bar">
+    <h1>🍄 Mycelia <small>— tactical duel</small></h1>
+    <div class="score"><span style="color:var(--you)">You <b id="sc-you">1</b></span><span style="color:var(--foe)">Rival <b id="sc-foe">1</b></span><span style="color:var(--muted)">R<b id="rnd">1</b></span></div>
   </div>
-  <div id="terrbar"></div>
-  <div id="coach">Pick a species to begin.</div>
-  <canvas id="cv" width="760" height="520"></canvas>
+  <div id="coach"></div>
+  <canvas id="cv" width="520" height="470"></canvas>
   <div id="hint"></div>
-</div>
-
-<aside>
-  <div class="card">
-    <h2>Spore energy</h2>
-    <div class="spore"><div class="f" id="spore-f"></div><div class="l" id="spore-l"></div></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px">Energy builds over time. Spend it to <b style="color:var(--ink)">fruit</b> or <b style="color:var(--ink)">upgrade</b> — then watch the forest grow while it refills.</div>
-    <button id="fruitbtn">🍄 Fruit — grow a mushroom</button>
-    <div class="stat" style="margin-top:8px"><span>Your tiles</span><b id="s-tiles">—</b></div>
+  <div class="acts">
+    <button id="a-grow" data-a="grow">🌱 Grow<small>claim a tile</small></button>
+    <button id="a-edible" data-a="edible">🍄 Edible<small>lure &amp; spread</small></button>
+    <button id="a-toxic" data-a="toxic">☠️ Toxic<small>kill / wall</small></button>
+    <button id="a-mimic" data-a="mimic">🎭 Mimic<small>hidden trap</small></button>
   </div>
+  <div id="log"></div>
 
-  <div class="card">
-    <h2>Upgrade</h2>
-    <div id="traits"></div>
-  </div>
-
-  <div class="card"><h2>Log</h2><div id="log"></div></div>
-</aside>
-
-<div id="start" class="ov"><div class="box" style="max-width:640px">
-  <h2 style="margin:0">🍄 Mycelia</h2>
-  <p style="color:var(--muted);margin:6px 0 0">A living forest floor. Your mycelium <b style="color:var(--ink)">blooms on its own</b>. Grow <b style="color:var(--ink)">fruiting bodies</b> to attract <b style="color:var(--ink)">foragers</b> — they carry your spores across the map and start new blooms. Fill the most ground to win. Pick your species:</p>
-  <div class="fcards" id="fcards"></div>
-</div></div>
-<div id="ov" class="ov" style="display:none"><div class="box" style="text-align:center;max-width:420px">
-  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p><button onclick="location.reload()">New forest ↺</button>
+<div id="ov" class="ov" style="display:none"><div class="box" style="text-align:center">
+  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p><button onclick="location.reload()" style="padding:9px 16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;cursor:pointer">New duel ↺</button>
 </div></div>
 
 <script src="./engine.js"></script>
 <script>
-const {createGame, FACTIONS, TRAITS} = Mycelia;
+const {createGame, FACTIONS} = Mycelia;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let api,S,you,S3,HS,playing=true,speed=1,timer=null,fruitMode=false;
+let api,S,you,foe,HS=34,sel=null,ox=0,oy=0,busy=false;
 
-(function(){ const box=document.getElementById('fcards');
-  for(const k in FACTIONS){ const f=FACTIONS[k]; const b=document.createElement('button'); b.style.borderColor=f.color+'66';
-    b.innerHTML=`<div style="font-size:15px;color:${f.color}">${f.name}</div>
-      <div style="color:var(--muted);font-size:11px;margin:2px 0 6px">${f.tag} · niche ${f.niche}</div>
-      <div style="font-size:12px;line-height:1.3">${f.effect}</div>
-      <div style="font-size:11px;line-height:1.3;margin-top:6px;color:${f.color}">✦ ${f.bonus.label} — ${f.bonus.desc}</div>`;
-    b.onclick=()=>start(k); box.appendChild(b); }
-})();
+api=createGame({log:m=>logMsg(m)}); S=api.state; you=api.you(); foe=api.foe();
+// pixel bounds for centering
+(function(){ let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  for(const t of S.tiles){ const {x,y}=hx(t); minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);}
+  ox=(cv.width-(maxx-minx))/2-minx; oy=(cv.height-(maxy-miny))/2-miny; })();
+function hx(t){ return { x:HS*Math.sqrt(3)*(t.q+t.r/2), y:HS*1.5*t.r }; }
+function center(t){ const {x,y}=hx(t); return {cx:x+ox, cy:y+oy}; }
 
-function start(fk){
-  api=createGame({playerFaction:fk, playerControlled:true, log:m=>logMsg(m)});
-  S=api.state; you=S.colonies.find(c=>c.isYou);
-  S3=Math.sqrt(3); HS=Math.min(15, Math.floor((cv.width-8)/((S.COLS+0.5)*S3)));
-  cv.width=Math.ceil((S.COLS+0.5)*S3*HS)+4; cv.height=Math.ceil(HS*1.5*S.ROWS+HS/2)+4;
-  document.getElementById('start').style.display='none';
-  render(); syncPanel(); loop();
-  logMsg(`You are ${FACTIONS[fk].name}. Fruit to attract foragers and spread.`);
-}
-
-// ---- hex geometry (pointy-top, odd-r) ----
-function hexC(x,y){ return { cx: HS*S3*(x+0.5*(y&1)) + HS*S3/2+2, cy: HS*1.5*y + HS+2 }; }
 function hexPath(cx,cy){ ctx.beginPath();
-  for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i-90); const px=cx+HS*Math.cos(a), py=cy+HS*Math.sin(a);
-    i?ctx.lineTo(px,py):ctx.moveTo(px,py); } ctx.closePath(); }
-function pixelToTile(px,py){ let best=null,bd=1e9;
-  for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y); const d=(cx-px)**2+(cy-py)**2; if(d<bd){bd=d;best=t;} } return best; }
+  for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i-90); const px=cx+HS*0.94*Math.cos(a), py=cy+HS*0.94*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
 
-// ---- render ----
 function render(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y);
+  const valid=new Set(sel==='grow'?api.growTargets(you):(sel?api.fruitTargets(you):[]));
+  for(const t of S.tiles){ const {cx,cy}=center(t);
     hexPath(cx,cy);
-    ctx.fillStyle=api.SUB[t.sub].color; ctx.fill();
-    if(t.owner){ const fc=FACTIONS[t.owner.faction].color;
-      const a=['66','88','aa','cc','ee','ff'][Math.min(5,t.lvl)]||'cc';
-      ctx.fillStyle=fc+a; ctx.fill(); }
-    ctx.strokeStyle='#0000004d'; ctx.lineWidth=1; ctx.stroke();
-    // while placing a fruit, glow the tiles you can put one on
-    if(fruitMode && t.owner===you && !t.fruit){ ctx.strokeStyle='#e0a0ff'; ctx.lineWidth=2.5; hexPath(cx,cy); ctx.stroke(); }
-    // fruiting body: a little mushroom
-    if(t.fruit){ const oc=FACTIONS[t.fruit.owner.faction].color;
-      ctx.fillStyle='#f2ead8'; ctx.fillRect(cx-1,cy-1,2,HS*0.5);            // stem
-      ctx.fillStyle=oc; ctx.beginPath(); ctx.ellipse(cx,cy-1,HS*0.42,HS*0.3,0,Math.PI,0); ctx.fill(); // cap
-      ctx.fillStyle='#0a0c08'; for(let d=0;d<3;d++) ctx.fillRect(cx-3+d*3,cy-3,1,1); }
+    ctx.fillStyle = t.owner? FACTIONS[t.owner.faction].color+'40' : '#242a1e';
+    ctx.fill();
+    if(t.owner){ ctx.fillStyle=FACTIONS[t.owner.faction].color+'20'; ctx.fill(); }
+    ctx.lineWidth = valid.has(t)?3:1.2;
+    ctx.strokeStyle = valid.has(t)? (sel==='toxic'?'#e0524d':sel==='mimic'?'#c47cff':'var(--you)'==='var(--you)'?'#e8c34a':'#e8c34a') : '#3a4531';
+    if(valid.has(t)) ctx.strokeStyle = sel==='toxic'?'#e0524d':sel==='mimic'?'#c47cff':'#e8c34a';
+    ctx.stroke();
+    // mushroom glyph — hide the true nature of the RIVAL's edible/mimic (both look like 🍄)
+    if(t.mush){ const m=t.mush; let g='🍄';
+      if(m.owner===you){ g = m.type==='toxic'?'☠️':m.type==='mimic'?'🎭':'🍄'; }
+      else { g = m.type==='toxic'?'☠️':'🍄'; }         // rival mimic looks edible
+      ctx.font='19px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(g,cx,cy+1);
+      // owner ring
+      ctx.strokeStyle=FACTIONS[m.owner.faction].color; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,HS*0.5,0,7); ctx.stroke();
+    }
   }
-  // foragers — visible agents; loaded ones glow in the faction colour they carry
-  for(const f of S.foragers){ const {cx,cy}=hexC(f.x,f.y);
-    if(f.load){ ctx.fillStyle=FACTIONS[f.load.faction].color; ctx.beginPath(); ctx.arc(cx,cy,4.2,0,7); ctx.fill();
-      ctx.strokeStyle='#000'; ctx.lineWidth=1; ctx.stroke(); }
-    else { ctx.fillStyle='#cdd3c2'; ctx.beginPath(); ctx.arc(cx,cy,3,0,7); ctx.fill(); }
-  }
+  // foragers
+  for(const f of S.foragers){ const {cx,cy}=center(api.get(f.q,f.r));
+    ctx.font='18px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🐿️',cx,cy-1); }
 }
 
-// ---- panel ----
 function syncPanel(){
-  document.getElementById('tick').textContent=S.tick;
-  const v=api.viable(), bar=document.getElementById('terrbar'); bar.innerHTML='';
-  const segs=S.colonies.map(c=>({c,n:api.tilesOf(c)})).sort((a,b)=>b.n-a.n);
-  for(const {c,n} of segs){ if(!n)continue; const p=100*n/v; const d=document.createElement('div');
-    d.style.width=p+'%'; d.style.background=FACTIONS[c.faction].color; d.textContent=p>7?(c.isYou?'You ':'')+Math.round(p)+'%':''; bar.appendChild(d); }
-  const neu=v-segs.reduce((s,x)=>s+x.n,0); if(neu>0){ const d=document.createElement('div'); d.style.width=(100*neu/v)+'%'; d.style.background='#20241c'; bar.appendChild(d); }
-  const sp=you.spore, cap=api.sporeCap;
-  document.getElementById('spore-f').style.width=Math.min(100,100*sp/cap)+'%';
-  document.getElementById('spore-l').textContent=Math.floor(sp)+' / '+cap+(sp>=api.FRUIT_COST?' — ready to fruit':'');
-  document.getElementById('fruitbtn').disabled=!api.canFruit(you);
-  document.getElementById('s-tiles').textContent=api.tilesOf(you)+' ('+Math.round(100*api.share(you))+'%)';
-  const box=document.getElementById('traits'); box.innerHTML='';
-  for(const tr of api.traitsFor(you)){ const lvl=you.genome[tr.key]||0, c=api.upCost(lvl), fc=FACTIONS[you.faction].color;
-    const row=document.createElement('div'); row.className='trait';
-    row.innerHTML=`<div class="n">${tr.faction?`<span style="color:${fc}">✦ ${tr.label}</span>`:tr.label}<small>${tr.desc}</small></div>
-      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip" ${i<lvl?`style="background:${tr.faction?fc:'#84c497'}"`:''}></div>`).join('')}</div>
-      <button class="up" ${lvl>=5||you.spore<c?'disabled':''}>${lvl>=5?'max':'+ <span class=cost>'+c+'</span>'}</button>`;
-    if(lvl<5) row.querySelector('button').onclick=()=>{ if(api.upgrade(you,tr.key)){logMsg('Upgraded '+tr.label+' → '+(lvl+1));syncPanel();} };
-    box.appendChild(row);
-  }
+  document.getElementById('sc-you').textContent=you.score+'·'+api.count(you);
+  document.getElementById('sc-foe').textContent=foe.score+'·'+api.count(foe);
+  document.getElementById('rnd').textContent=S.round;
+  // toggle action availability
+  document.getElementById('a-grow').disabled=!api.canGrow(you)||busy;
+  for(const id of ['a-edible','a-toxic','a-mimic']) document.getElementById(id).disabled=!api.fruitTargets(you).length||busy;
   coach();
 }
-function coach(){ const el=document.getElementById('coach'); let m,e='var(--accent)';
-  const sh=api.share(you);
-  if(api.tilesOf(you)===0){ m=`<b>Your colony died out.</b>`; }
-  else if(you.spore<api.FRUIT_COST){ m=`<b>Energy is building…</b> While you wait, watch your mycelium bloom. Soon you can <b>fruit</b> to attract foragers.`; }
-  else { m=`<b>You can act.</b> Tap <b>🍄 Fruit</b>, then tap one of your tiles near open ground — foragers will carry its spores far. Or <b>Upgrade</b>.`; }
-  if(sh>0.4) m=`<b>You're winning (${Math.round(sh*100)}%).</b> Keep fruiting toward open ground to fill the forest.`;
-  el.innerHTML=m; el.style.borderLeftColor=e;
+function coach(){ const el=document.getElementById('coach');
+  const nearF=S.foragers.some(f=>api.fruitTargets(you).some(t=>api.dist(t,{q:f.q,r:f.r})<=2));
+  let m;
+  if(busy) m=`<b>Rival's move…</b> then the foragers wander.`;
+  else if(nearF) m=`<b>A forager is near your ground.</b> Grow an <b>🍄 Edible</b> beside it — it'll harvest and spread you. Or set a <b>🎭 Mimic</b> to trap one heading for the rival.`;
+  else m=`<b>Your move.</b> Pick a trick, then tap a highlighted tile. <b>🍄 Edible</b> lures foragers, <b>🌱 Grow</b> claims safely, <b>☠️ Toxic</b> walls them off, <b>🎭 Mimic</b> looks edible but kills.`;
+  el.innerHTML=m;
 }
 
 // ---- interaction ----
-// Tap Fruit to arm placement (your tiles glow), then tap a tile to grow the mushroom there.
-document.getElementById('fruitbtn').onclick=()=>{ if(S.over||!api.canFruit(you))return;
-  fruitMode=!fruitMode;
-  document.getElementById('fruitbtn').classList.toggle('active',fruitMode);
-  document.getElementById('hint').textContent=fruitMode?'Tap one of your glowing tiles to grow a mushroom there.':'';
-  if(fruitMode) cv.scrollIntoView({behavior:'smooth',block:'center'});
-  render(); };
-cv.addEventListener('click',e=>{ if(S.over||!fruitMode)return; const r=cv.getBoundingClientRect();
-  const t=pixelToTile((e.clientX-r.left)*(cv.width/r.width),(e.clientY-r.top)*(cv.height/r.height));
-  if(t && t.owner===you && !t.fruit && api.fruit(you,t)){ fruitMode=false;
-    document.getElementById('fruitbtn').classList.remove('active'); document.getElementById('hint').textContent='';
-    render(); syncPanel(); }
-  else document.getElementById('hint').textContent='Fruit on one of YOUR glowing tiles that has no mushroom yet.'; });
+for(const b of document.querySelectorAll('.acts button')){ b.onclick=()=>{ if(busy)return;
+  sel = sel===b.dataset.a ? null : b.dataset.a;
+  for(const x of document.querySelectorAll('.acts button')) x.classList.toggle('sel', x===b && sel);
+  document.getElementById('hint').textContent = sel? `Tap a highlighted tile to place your ${sel==='grow'?'mycelium':sel+' mushroom'}.` : '';
+  render(); }; }
 
-document.getElementById('play').onclick=()=>{ playing=!playing;
-  document.getElementById('play').textContent=playing?'⏸ Pause':'▶ Play'; loop(); };
-document.getElementById('speed').onclick=()=>{ speed=speed>=4?1:speed*2;
-  document.getElementById('speed').textContent=speed+'×'; loop(); };
+cv.addEventListener('click',e=>{ if(busy||!sel||S.over)return;
+  const r=cv.getBoundingClientRect(); const px=(e.clientX-r.left)*(cv.width/r.width), py=(e.clientY-r.top)*(cv.height/r.height);
+  let hit=null,bd=1e9; for(const t of S.tiles){ const {cx,cy}=center(t); const d=(cx-px)**2+(cy-py)**2; if(d<bd){bd=d;hit=t;} }
+  if(!hit||bd>HS*HS) return;
+  let ok = sel==='grow' ? api.grow(you,hit) : api.fruit(you,hit,sel);
+  if(!ok){ document.getElementById('hint').textContent='Not a legal spot for that.'; return; }
+  sel=null; for(const x of document.querySelectorAll('.acts button')) x.classList.remove('sel');
+  document.getElementById('hint').textContent=''; render(); syncPanel();
+  opponentPhase();
+});
 
-function loop(){ if(timer)clearInterval(timer); if(!playing||S.over)return;
-  timer=setInterval(()=>{ api.tick(); render(); syncPanel(); if(S.over){clearInterval(timer);endScreen();} }, Math.round(850/speed)); }
+function opponentPhase(){ busy=true; syncPanel(); render();
+  setTimeout(()=>{ api.endTurn(); render(); syncPanel();
+    busy=false; syncPanel(); render();
+    if(S.over) endScreen();
+  }, 550); }
 
-function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.tick:0;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='['+t+'] '+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
-function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou, wn=S.winner?FACTIONS[S.winner].name:'No one';
-  const reasons={full:'filled the most of the forest',majority:'took the majority of the floor',domination:'was the last colony blooming'};
-  document.getElementById('ov-t').textContent=me?'🍄 You win!':`${wn} wins`;
-  document.getElementById('ov-b').textContent=`${wn} ${reasons[S.reason]||'won'} — ${Math.round(100*api.share(S.winnerCol))}% of the forest.`;
+function logMsg(m){const d=document.getElementById('log');const e=document.createElement('div');e.textContent=(S?'R'+S.round+' ':'')+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
+function endScreen(){ const me=S.winnerP&&S.winnerP.isYou;
+  const t = S.reason==='draw'?'A draw' : me?'🍄 You win!':`${FACTIONS[S.winner].name} wins`;
+  const b = S.reason==='majority'?'controlled the majority of the forest floor.':S.reason==='draw'?'Even ground when the foragers ran out.':'held the most ground when the foragers ran out.';
+  document.getElementById('ov-t').textContent=t;
+  document.getElementById('ov-b').textContent=`You ${api.count(you)} tiles vs Rival ${api.count(foe)} — `+b;
   document.getElementById('ov').style.display='flex'; }
+
+render(); syncPanel();
+logMsg('A duel begins. Lure the foragers; outwit the rival.');
 </script>
 </body>
 </html>

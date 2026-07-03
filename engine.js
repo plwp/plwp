@@ -1,9 +1,12 @@
 /* ============================================================
-   MYCELIA — living-forest engine (v4). A hex forest floor. Your
-   mycelium BLOOMS outward on its own; you grow FRUITING BODIES that
-   attract roaming FORAGERS, who physically carry your spores across
-   the map and seed new blooms. No tile-clicking growth, no turns —
-   it's alive and ticking; you fruit and upgrade, and steer.
+   MYCELIA — tactical duel engine (v5). A small hex board, two rival
+   fungi, alternating turns, near-full information. Neutral FORAGERS
+   wander toward anything that looks edible; luring one to your fruit
+   spreads your mycelium. Your verbs are mushroom tricks:
+     • Edible — lure a forager; it harvests & spreads you (+ a point)
+     • Toxic  — visible poison; kills foragers that enter (a wall)
+     • Mimic  — looks edible to your foe, but it's a trap: kills the lured forager
+   Grow slow & safe, or fruit to lure & gamble. Most ground wins.
 
    Single source of truth for the UI (index.html) and sim (sim.js).
    ============================================================ */
@@ -13,204 +16,139 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
 
-const SUB = {
-  soil:   {name:'Soil',   color:'#3f5233', vigor:1.0},
-  litter: {name:'Litter', color:'#4a3f2a', vigor:1.2},
-  dung:   {name:'Dung',   color:'#7a6a3a', vigor:1.6},
-  wood:   {name:'Wood',   color:'#6b4a2a', vigor:1.4},
-  barren: {name:'Barren', color:'#20241c', vigor:0},
-};
-const TRAITS = [
-  {key:'mycelium', label:'Mycelium', desc:'Blooms faster and denser'},
-  {key:'fruiting', label:'Fruiting', desc:'Fruiting bodies are riper — foragers visit more'},
-  {key:'spores',   label:'Spores',   desc:'Foragers carry your spores much farther'},
-];
-const upCost = lvl => 10 + lvl*8;
-const FRUIT_COST = 10;
-
+const DIRS=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 const FACTIONS = {
-  boletus:{ name:'Boletus', tag:'The Feast', color:'#e8c34a', niche:'wood',
-    bonus:{key:'taste', label:'Taste', desc:'Foragers flock to your fruit — most dispersal of all'},
-    effect:'Choice edible. Foragers can’t resist it.' },
-  psilocybe:{ name:'Psilocybe', tag:'The Prophet', color:'#c47cff', niche:'dung',
-    bonus:{key:'psychotropic', label:'Psychotropics', desc:'Tripping foragers wander far before dropping your spores'},
-    effect:'Psychedelic. Its spores end up everywhere.' },
-  amanita:{ name:'Amanita', tag:'The Deceiver', color:'#e0524d', niche:'litter',
-    bonus:{key:'lethality', label:'Lethality', desc:'Toxic — resists being overgrown; poisons greedy foragers'},
-    effect:'Deadly. Holds its ground; kills careless foragers.' },
+  boletus:{ name:'Boletus', color:'#e8c34a', tag:'The Feast' },
+  amanita:{ name:'Amanita', color:'#e0524d', tag:'The Deceiver' },
 };
-const FKEYS = Object.keys(FACTIONS);
-const bonusKey=f=>FACTIONS[f].bonus.key;
-
-function mulberry32(a){ return function(){
-  a|=0; a=a+0x6D2B79F5|0;
-  let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
-  return ((t^t>>>14)>>>0)/4294967296;
-};}
-
-// odd-r offset hex neighbours
-const HEX=[
-  [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1]],   // even rows
-  [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1]],     // odd rows
-];
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
+  let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; };}
 
 function createGame(opts={}){
-  const COLS=opts.cols||30, ROWS=opts.rows||22;
+  const R=opts.radius||3;
   const rng=opts.rng||Math.random;
   const logfn=opts.log||(()=>{});
-  const facs=opts.factions||FKEYS.slice();
-  const playerFaction=opts.playerFaction||facs[0];
-  const SPORE_CAP=40, N_FORAGERS=Math.round(COLS*ROWS/64), MAXTICKS=opts.maxTicks||2200;
+  const g={ R, rng, tiles:[], map:{}, players:[], foragers:[], turn:0, round:1,
+            over:false, winner:null, reason:null, maxRounds:opts.maxRounds||22, log:logfn };
+  const key=(q,r)=>q+','+r;
+  const get=(q,r)=>g.map[key(q,r)];
+  const dist=(a,b)=>(Math.abs(a.q-b.q)+Math.abs(a.r-b.r)+Math.abs(a.q+a.r-b.q-b.r))/2;
+  function neighbors(t){ const o=[]; for(const [dq,dr] of DIRS){ const n=get(t.q+dq,t.r+dr); if(n)o.push(n);} return o; }
 
-  const g={ COLS, ROWS, rng, tick:0, over:false, winner:null, winnerCol:null, reason:null,
-            grid:[], colonies:[], foragers:[] };
-  const idx=(x,y)=>y*COLS+x;
-  const inB=(x,y)=>x>=0&&y>=0&&x<COLS&&y<ROWS;
-  const gv=(c,k)=>c.genome[k]||0;
-
-  function mkColony(i,key){ const genome={mycelium:0,fruiting:0,spores:0}; genome[bonusKey(key)]=0;
-    return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction, genome, spore:FRUIT_COST, buf:0 }; }
-
-  function offToCube(x,y){ const q=x-((y-(y&1))>>1); return [q,-q-y,y]; }
-  function hexDist(a,b){ const A=offToCube(a.x,a.y),B=offToCube(b.x,b.y);
-    return (Math.abs(A[0]-B[0])+Math.abs(A[1]-B[1])+Math.abs(A[2]-B[2]))/2; }
-  function neighbors(t){ const o=[]; for(const [dx,dy] of HEX[t.y&1]) if(inB(t.x+dx,t.y+dy)) o.push(g.grid[idx(t.x+dx,t.y+dy)]); return o; }
-
-  function genMap(){
-    g.grid=[];
-    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
-      const n=(Math.sin(x*0.45)+Math.cos(y*0.55)+Math.sin((x+y)*0.35))*1.2+2.2;
-      const kinds=['soil','litter','dung','wood','soil','litter'];
-      let sub=kinds[Math.max(0,Math.min(kinds.length-1,Math.round(n)))];
-      if(rng()<0.06) sub='barren';
-      g.grid.push({x,y,sub,owner:null,lvl:0,tt:-9,fruit:null});
-    }
-    g.colonies=facs.map((k,i)=>mkColony(i,k));
-    const spots={wood:[4,ROWS-4],dung:[COLS-5,4],litter:[4,4],soil:[COLS-5,ROWS-4]};
-    g.colonies.forEach(c=>{ const [sx,sy]=spots[c.niche]||[4,4]; const t=g.grid[idx(sx,sy)];
-      if(t.sub==='barren')t.sub='soil'; t.owner=c; t.lvl=3; });
-    for(let i=0;i<N_FORAGERS;i++) g.foragers.push({ x:Math.floor(rng()*COLS), y:Math.floor(rng()*ROWS), load:null, carry:0 });
+  function build(){
+    for(let q=-R;q<=R;q++) for(let r=Math.max(-R,-q-R); r<=Math.min(R,-q+R); r++){
+      const t={q,r,owner:null,mush:null}; g.tiles.push(t); g.map[key(q,r)]=t; }
+    g.players=[ {i:0,faction:'boletus',isYou:true, score:0},
+                {i:1,faction:'amanita',isYou:false,score:0} ];
+    get(-R, R).owner=g.players[0]; get(R,-R).owner=g.players[1];   // opposite corners
+    // three foragers, dropped on neutral ground away from the starts
+    const spots=[get(0,-R),get(R,0),get(-R,0)].filter(Boolean);
+    for(const s of spots) if(!s.owner) g.foragers.push({q:s.q,r:s.r,alive:true});
   }
 
-  const owned=c=>g.grid.filter(t=>t.owner===c);
-  const tilesOf=c=>owned(c).length;
-  const viable=()=>g.grid.filter(t=>t.sub!=='barren').length;
-  const share=c=>tilesOf(c)/(viable()||1);
-  const open=()=>g.grid.filter(t=>!t.owner && t.sub!=='barren').length;
-  const MAXLVL=c=>3+gv(c,'mycelium');
+  const tilesOf=p=>g.tiles.filter(t=>t.owner===p);
+  const count=p=>tilesOf(p).length;
+  const empty=t=>!t.owner && !t.mush;
+  const attractive=m=> m && (m.type==='edible'||m.type==='mimic');   // what a forager smells as food
 
-  // ---- bloom: organic local spread (slow creep — a 15-30 min game) ----
-  function bloom(col){
-    const mine=owned(col); if(!mine.length) return;
-    col.buf += 0.12 + gv(col,'mycelium')*0.09 + gv(col,'taste')*0.05;
-    let budget=Math.floor(col.buf); col.buf-=budget;
-    for(const t of mine){ const mx=MAXLVL(col); if(t.lvl<mx && rng()<0.06) t.lvl++; }
-    let guard=0;
-    while(budget>0 && guard++<600){
-      const src=mine[Math.floor(rng()*mine.length)];
-      const ns=neighbors(src).filter(n=>n.sub!=='barren' && n.owner!==col);
-      if(!ns.length){ budget--; continue; }
-      const openN=ns.filter(n=>!n.owner);
-      const t=openN.length ? openN[Math.floor(rng()*openN.length)] : ns[Math.floor(rng()*ns.length)];
-      if(!t.owner){ t.owner=col; t.lvl=1; t.tt=g.tick; }
-      else if(t.tt!==g.tick){ const resist=t.lvl+gv(t.owner,'lethality'), force=src.lvl+gv(col,'mycelium');
-        if(force>resist && rng()<0.55){ t.lvl--; if(t.lvl<=0){ t.owner=col; t.lvl=1; t.tt=g.tick; } } }
-      budget--;
-    }
-  }
+  // ---- actions (one per turn) ----
+  function canGrow(p){ return growTargets(p).length>0; }
+  function growTargets(p){ const set=new Set();
+    for(const t of tilesOf(p)) for(const n of neighbors(t)) if(!n.owner && !n.mush) set.add(n);
+    return [...set]; }
+  function grow(p,t){ if(t.owner||t.mush) return false; if(!growTargets(p).includes(t)) return false;
+    t.owner=p; logfn(`${who(p)} grew mycelium`); return true; }
+  function fruit(p,t,type){ if(t.owner!==p||t.mush) return false;
+    t.mush={owner:p,type}; logfn(`${who(p)} grew a ${type} mushroom`); return true; }
+  const fruitTargets=p=>tilesOf(p).filter(t=>!t.mush);
 
-  // ---- foragers: visible agents that carry spores between fruiting bodies and open ground ----
-  function ripeFruits(){ return g.grid.filter(t=>t.fruit && t.fruit.ripe>0); }
-  function moveForager(f){
-    const here=g.grid[idx(f.x,f.y)];
-    if(f.load){                                   // carrying spores → wander, then drop
-      f.carry--;
-      const step=neighbors(here); const t=step[Math.floor(rng()*step.length)]||here;
-      f.x=t.x; f.y=t.y;
-      const cur=g.grid[idx(f.x,f.y)];
-      if(f.carry<=0){                             // deposit a new bloom of the carried faction
-        if(!cur.owner && cur.sub!=='barren'){ cur.owner=f.load; cur.lvl=1; cur.tt=g.tick;
-          if(f.load.isYou) logfn('🐿️ A forager dropped your spores far off — a new bloom!'); }
-        f.load=null;
+  const who=p=>FACTIONS[p.faction].name;
+
+  // ---- forager phase: move each, then resolve what they land on ----
+  function stepForagers(){
+    for(const f of g.foragers){ if(!f.alive) continue;
+      const here=get(f.q,f.r);
+      // find nearest attractive mushroom
+      let target=null,bd=1e9;
+      for(const t of g.tiles){ if(attractive(t.mush)){ const d=dist(here,t); if(d<bd){bd=d;target=t;} } }
+      if(target && bd>0){ // step one hex closer, avoiding visible toxin if possible
+        const opts=neighbors(here).filter(n=>!(n.mush&&n.mush.type==='toxic'));
+        const pool=opts.length?opts:neighbors(here);
+        const nx=pool.reduce((a,b)=> dist(b,target)<dist(a,target)?b:a, here);
+        f.q=nx.q; f.r=nx.r;
+      } else if(!target){ const ns=neighbors(here); const nx=ns[Math.floor(rng()*ns.length)]||here; f.q=nx.q; f.r=nx.r; }
+      // resolve the tile it now stands on
+      const cur=get(f.q,f.r);
+      if(cur.mush){ const m=cur.mush;
+        if(m.type==='toxic'){ f.alive=false; logfn(`☠️ A forager died on ${who(m.owner)}'s toxin`); }
+        else if(m.type==='mimic'){ f.alive=false; cur.mush=null; logfn(`🎭 ${who(m.owner)}'s lookalike killed a forager!`); }
+        else if(m.type==='edible'){ // harvest: owner scores and the spore spreads to an empty neighbour
+          m.owner.score++; const openN=neighbors(cur).filter(empty);
+          if(openN.length){ openN[Math.floor(rng()*openN.length)].owner=m.owner; }
+          cur.mush=null; logfn(`🍄 A forager ate ${who(m.owner)}'s fruit — spores spread`);
+          // move the sated forager off to a random neighbour
+          const ns=neighbors(cur); const nx=ns[Math.floor(rng()*ns.length)]||cur; f.q=nx.q; f.r=nx.r;
+        }
       }
-      return;
     }
-    // unladen: drift toward the most attractive nearby fruit (Taste pulls harder)
-    const fr=ripeFruits(); let target=null,best=1e9;
-    for(const t of fr){ const d=hexDist(here,t) - gv(t.fruit.owner,'taste')*0.8;
-      if(d<best && hexDist(here,t)<8){ best=d; target=t; } }
-    let nx=here;
-    if(target){ const step=neighbors(here).concat(here);
-      nx=step.reduce((a,b)=> hexDist(b,target)<hexDist(a,target)?b:a, here); }
-    else { const step=neighbors(here); nx=step[Math.floor(rng()*step.length)]||here; }
-    f.x=nx.x; f.y=nx.y;
-    const cur=g.grid[idx(f.x,f.y)];
-    if(cur.fruit && cur.fruit.ripe>0){            // pick up spores from the fruiting body
-      const own=cur.fruit.owner;
-      if(gv(own,'lethality')>0 && rng()<0.25+gv(own,'lethality')*0.12){  // toxic fruit poisons it
-        respawnForager(f); return; }
-      f.load=own; f.carry=1 + gv(own,'spores')*0.8 + gv(own,'psychotropic')*0.7;
-      cur.fruit.ripe--; if(cur.fruit.ripe<=0) cur.fruit=null;
-      // OVER-FORAGING: FOOD foragers (Taste) are gentle — they eat and leave your
-      // mycelium fine. PSYCHOTROPIC foragers trip and trample, chewing your ground
-      // down — so Psilocybe's huge reach comes at a real cost to its own web.
-      const swarm = g.foragers.filter(o=>Math.abs(o.x-cur.x)+Math.abs(o.y-cur.y)<=1).length;
-      if(rng() < (gv(own,'psychotropic')*0.16 + swarm*0.02)){ cur.lvl--;
-        if(cur.lvl<=0){ cur.owner=null; cur.lvl=0; if(own.isYou) logfn('💀 Tripping foragers wrecked a tile back to bare ground'); }
-        else if(own.isYou) logfn('😵‍💫 Tripping foragers trampled some of your mycelium'); }
-    }
-  }
-  function respawnForager(f){ f.load=null; f.carry=0; f.x=Math.floor(rng()*COLS); f.y=Math.floor(rng()*ROWS); }
-
-  function accrue(col){ col.spore=Math.min(SPORE_CAP, col.spore + 0.4 + tilesOf(col)*0.03); }
-
-  // ---- actions ----
-  function fruit(col,t){                          // grow a fruiting body on one of your tiles
-    if(!t||t.owner!==col||t.fruit||col.spore<FRUIT_COST) return false;
-    col.spore-=FRUIT_COST; t.fruit={owner:col, ripe:2+gv(col,'fruiting')};
-    if(col.isYou) logfn('🍄 A fruiting body erupts — foragers will come');
-    return true;
-  }
-  function upgrade(col,key){ const lvl=col.genome[key]||0; if(lvl>=5) return false;
-    const c=upCost(lvl); if(col.spore<c) return false; col.spore-=c; col.genome[key]=lvl+1; return true; }
-
-  function aiAct(col){
-    const build=['mycelium', bonusKey(col.faction), 'fruiting', 'spores'];
-    for(const k of build){ if((col.genome[k]||0)>=5) continue; if(col.spore>upCost(col.genome[k]||0)+FRUIT_COST){ if(upgrade(col,k))break; } }
-    if(col.spore>=FRUIT_COST && rng()<0.4){       // fruit on an edge tile beside open ground
-      const edge=owned(col).filter(t=>!t.fruit && neighbors(t).some(n=>!n.owner&&n.sub!=='barren'));
-      if(edge.length) fruit(col, edge[Math.floor(rng()*edge.length)]);
-    }
+    g.foragers=g.foragers.filter(f=>f.alive);
   }
 
-  // ---- the tick ----
-  function tick(){
-    if(g.over) return; g.tick++;
-    for(const c of g.colonies) bloom(c);
-    for(const f of g.foragers) moveForager(f);
-    for(const c of g.colonies){ accrue(c); if(!(c.isYou&&opts.playerControlled)) aiAct(c); }
+  // ---- simple tactical AI ----
+  function aiTurn(p){
+    const foe=g.players[0];
+    // 1) if a live forager is 1-2 tiles from a tile I own, fruit EDIBLE there to harvest it
+    const mine=fruitTargets(p);
+    let best=null,bd=1e9;
+    for(const t of mine) for(const f of g.foragers){ const d=dist(t,{q:f.q,r:f.r}); if(d<bd){bd=d;best=t;} }
+    if(best && bd<=2 && g.rng()<0.8) return fruit(p,best,'edible');
+    // 2) if a forager is heading for the foe's edible, drop a mimic near it to trap
+    const foeBait=g.tiles.find(t=>t.mush&&t.mush.owner===foe&&attractive(t.mush));
+    if(foeBait){ const near=mine.filter(t=>dist(t,foeBait)<=2).sort((a,b)=>dist(a,foeBait)-dist(b,foeBait))[0];
+      if(near && g.rng()<0.5) return fruit(p,near,'mimic'); }
+    // 3) otherwise grow toward the middle
+    if(canGrow(p)){ const t=growTargets(p).sort((a,b)=>dist(a,{q:0,r:0})-dist(b,{q:0,r:0}))[0]; return grow(p,t); }
+    if(mine.length) return fruit(p,mine[0],'edible');
+    return false;
+  }
+
+  // ---- turn flow ----
+  // player (turn 0) acts via the API; endTurn runs the AI then the forager phase.
+  function endTurn(){
+    if(g.over) return;
+    aiTurn(g.players[1]);
+    stepForagers();
+    g.round++;
     checkWin();
   }
   function checkWin(){
-    const v=viable(), alive=g.colonies.filter(c=>tilesOf(c)>0);
-    if(alive.length<=1 && g.colonies.length>1) return finish(alive[0],'domination');
-    for(const c of g.colonies) if(tilesOf(c)>v*0.5) return finish(c,'majority');
-    // end once the forest is essentially full (skip the slow tail of isolated tiles)
-    if(open() <= v*0.03){ const r=[...g.colonies].sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'full'); }
-    // hard ceiling so a game can never overstay its welcome
-    if(g.tick>=MAXTICKS){ const r=[...g.colonies].sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'season'); }
+    const a=count(g.players[0]), b=count(g.players[1]), total=g.tiles.length;
+    if(a>total*0.5) return finish(g.players[0],'majority');
+    if(b>total*0.5) return finish(g.players[1],'majority');
+    if(g.foragers.length===0 || g.round>g.maxRounds){
+      const w = a>b?g.players[0] : b>a?g.players[1] : null; return finish(w, w?'ground':'draw'); }
   }
-  function finish(col,reason){ g.over=true; g.winnerCol=col||null; g.winner=col?col.faction:null; g.reason=reason; }
+  function finish(p,reason){ g.over=true; g.winner=p?p.faction:null; g.winnerP=p||null; g.reason=reason; }
 
-  const api={ state:g, SUB, TRAITS, FACTIONS, upCost, FRUIT_COST, idx, inBounds:inB, neighbors, hexDist,
-    owned, tilesOf, viable, share, open, tick, fruit, upgrade,
-    who:c=>FACTIONS[c.faction].name, traitsFor:c=>TRAITS.concat([Object.assign({faction:true},FACTIONS[c.faction].bonus)]),
-    canFruit:c=>c.spore>=FRUIT_COST, sporeCap:SPORE_CAP };
-  genMap();
+  const api={ state:g, FACTIONS, neighbors, dist, get, tilesOf, count,
+    growTargets, canGrow, grow, fruit, fruitTargets, endTurn, who,
+    you:()=>g.players[0], foe:()=>g.players[1] };
+  build();
   return api;
 }
 
-function autoplay(api,maxTicks=800){ const s=api.state; let n=0; while(!s.over&&n++<maxTicks) api.tick(); return {ticks:s.tick,winner:s.winner,reason:s.reason}; }
+// headless sim helper: random-ish self-play for balance checks
+function autoplay(api,maxR=40){ const s=api.state; let n=0;
+  while(!s.over && n++<maxR){ const you=s.players[0];
+    // greedy: fruit edible near nearest forager, else grow
+    let acted=false, best=null,bd=1e9;
+    for(const t of api.fruitTargets(you)) for(const f of s.foragers){ const d=api.dist(t,{q:f.q,r:f.r}); if(d<bd){bd=d;best=t;} }
+    if(best&&bd<=2) acted=api.fruit(you,best,'edible');
+    if(!acted && api.canGrow(you)) acted=api.grow(you, api.growTargets(you)[0]);
+    if(!acted && api.fruitTargets(you)[0]) api.fruit(you,api.fruitTargets(you)[0],'edible');
+    api.endTurn();
+  }
+  return {rounds:s.round, winner:s.winner, reason:s.reason}; }
 
-return { createGame, FACTIONS, TRAITS, SUB, upCost, mulberry32, autoplay };
+return { createGame, FACTIONS, mulberry32, autoplay };
 });
