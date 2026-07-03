@@ -3,150 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mycelia — Tactical Duel</title>
+<title>Mycelia — Mushroom RTS</title>
 <style>
   :root{ --bg:#0e100d; --panel:#171b14; --panel2:#1f261b; --ink:#e9ede1; --muted:#8f9b82;
-    --line:#2d3726; --you:#e8c34a; --foe:#e0524d; }
+    --line:#2d3726; --you:#e8c34a; --foe:#e0524d; --nut:#7fd0a0; }
   *{box-sizing:border-box}
   html,body{margin:0;min-height:100%}
-  body{background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    display:flex;flex-direction:column;align-items:center;padding:14px;gap:12px;min-height:100vh}
-  h1{font-size:18px;margin:0}h1 small{color:var(--muted);font-weight:400;font-size:13px}
-  #bar{width:100%;max-width:520px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-  .score{display:flex;gap:14px;font-variant-numeric:tabular-nums;font-size:14px}
-  .score b{font-size:18px}
-  #coach{width:100%;max-width:520px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--you);
-    border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.4}#coach b{color:var(--ink)}
-  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:12px;touch-action:manipulation}
-  #hint{color:var(--muted);font-size:13px;min-height:18px;text-align:center;max-width:520px}
-  .acts{display:flex;gap:8px;width:100%;max-width:520px}
-  .acts button{flex:1;padding:12px 6px;font-size:14px;background:var(--panel);color:var(--ink);border:1px solid var(--line);
-    border-radius:10px;cursor:pointer;transition:.12s;display:flex;flex-direction:column;align-items:center;gap:3px}
-  .acts button small{color:var(--muted);font-size:10.5px;font-weight:400}
-  .acts button:hover:not(:disabled){border-color:var(--you)}
-  .acts button.sel{border-color:var(--you);background:#2a2f16;color:var(--you)}
-  .acts button:disabled{opacity:.4;cursor:not-allowed}
-  #log{width:100%;max-width:520px;font-size:12px;color:var(--muted);max-height:88px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:10px;gap:9px;min-height:100vh}
+  h1{font-size:16px;margin:0}h1 small{color:var(--muted);font-weight:400;font-size:12px}
+  #top{width:100%;max-width:820px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .hud{display:flex;gap:14px;align-items:center;font-variant-numeric:tabular-nums;font-size:13px;flex-wrap:wrap}
+  .hud b{font-size:16px}
+  .ctrl{display:flex;gap:6px}
+  .ctrl button{padding:7px 11px;font-size:13px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;cursor:pointer}
+  #terrbar{display:flex;height:16px;width:100%;max-width:820px;border-radius:5px;overflow:hidden;border:1px solid var(--line);background:#0a0c08}
+  #terrbar div{transition:width .3s}
+  #coach{width:100%;max-width:820px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--you);border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.4}#coach b{color:var(--ink)}
+  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:10px;max-width:100%;height:auto;cursor:pointer}
+  #hint{color:var(--muted);font-size:12px;min-height:15px;text-align:center}
+  .palette{display:flex;gap:7px;width:100%;max-width:820px;flex-wrap:wrap}
+  .palette button{flex:1;min-width:120px;padding:9px 8px;font-size:13px;background:var(--panel);color:var(--ink);border:1px solid var(--line);
+    border-radius:9px;cursor:pointer;transition:.12s;text-align:left;line-height:1.25}
+  .palette button:hover:not(:disabled){border-color:var(--you)}
+  .palette button.sel{border-color:var(--you);background:#2a2f16}
+  .palette button:disabled{opacity:.45;cursor:not-allowed}
+  .palette .c{color:var(--nut);font-weight:600}
+  .palette small{color:var(--muted);font-size:10.5px;display:block}
+  .tech{display:flex;gap:7px;width:100%;max-width:820px;flex-wrap:wrap}
+  .tech button{flex:1;min-width:120px;padding:8px;font-size:12px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:9px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .tech button:hover:not(:disabled){border-color:var(--nut)}.tech button:disabled{opacity:.45;cursor:not-allowed}
+  .tech .pips{display:flex;gap:2px}.tech .pip{width:7px;height:7px;border-radius:2px;background:#2d3726}.tech .pip.on{background:var(--nut)}
+  #log{width:100%;max-width:820px;font-size:12px;color:var(--muted);max-height:70px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
   .ov{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
-  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;max-width:460px;text-align:left}
-  .ov h2{margin:0 0 8px}
+  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px;max-width:440px;text-align:center}
 </style>
 </head>
 <body>
-  <div id="bar">
-    <h1>🍄 Mycelia <small>— tactical duel</small></h1>
-    <div class="score"><span style="color:var(--you)">You <b id="sc-you">1</b></span><span style="color:var(--foe)">Rival <b id="sc-foe">1</b></span><span style="color:var(--muted)">R<b id="rnd">1</b></span></div>
+  <div id="top">
+    <h1>🍄 Mycelia <small>— mushroom RTS</small></h1>
+    <div class="hud">
+      <span style="color:var(--nut)">Nutrients <b id="h-nut">—</b></span>
+      <span style="color:var(--you)">You <b id="h-you">—</b></span>
+      <span style="color:var(--foe)">Rival <b id="h-foe">—</b></span>
+      <span class="ctrl"><button id="play">⏸</button><button id="speed">1×</button></span>
+    </div>
   </div>
+  <div id="terrbar"></div>
   <div id="coach"></div>
-  <canvas id="cv" width="520" height="470"></canvas>
+  <canvas id="cv" width="812" height="470"></canvas>
   <div id="hint"></div>
-  <div class="acts">
-    <button id="a-grow" data-a="grow">🌱 Grow<small>claim a tile</small></button>
-    <button id="a-edible" data-a="edible">🍄 Edible<small>lure &amp; spread</small></button>
-    <button id="a-toxic" data-a="toxic">☠️ Toxic<small>kill / wall</small></button>
-    <button id="a-mimic" data-a="mimic">🎭 Mimic<small>hidden trap</small></button>
-  </div>
+  <div class="palette" id="palette"></div>
+  <div class="tech" id="tech"></div>
   <div id="log"></div>
 
-<div id="ov" class="ov" style="display:none"><div class="box" style="text-align:center">
-  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p><button onclick="location.reload()" style="padding:9px 16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;cursor:pointer">New duel ↺</button>
+<div id="ov" class="ov" style="display:none"><div class="box">
+  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p>
+  <button onclick="location.reload()" style="padding:9px 16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;cursor:pointer">New game ↺</button>
 </div></div>
 
 <script src="./engine.js"></script>
 <script>
-const {createGame, FACTIONS} = Mycelia;
+const {createGame, FACTIONS, BUILD, TECH} = Mycelia;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let api,S,you,foe,HS=34,sel=null,ox=0,oy=0,busy=false;
+let api,S,you,foe,HS,sel=null,playing=true,speed=1,timer=null;
+const GLYPH={fruit:'🍄',toxin:'☠️',symbiont:'🔗'};
 
-api=createGame({log:m=>logMsg(m)}); S=api.state; you=api.you(); foe=api.foe();
-// pixel bounds for centering
-(function(){ let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
-  for(const t of S.tiles){ const {x,y}=hx(t); minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);}
-  ox=(cv.width-(maxx-minx))/2-minx; oy=(cv.height-(maxy-miny))/2-miny; })();
-function hx(t){ return { x:HS*Math.sqrt(3)*(t.q+t.r/2), y:HS*1.5*t.r }; }
-function center(t){ const {x,y}=hx(t); return {cx:x+ox, cy:y+oy}; }
+api=createGame({playerControlled:true, log:m=>logMsg(m)});
+S=api.state; you=api.you(); foe=api.foe();
+const S3=Math.sqrt(3);
+HS=Math.min(15, Math.floor((cv.width-6)/((S.COLS+0.5)*S3)));
+cv.width=Math.ceil((S.COLS+0.5)*S3*HS)+4; cv.height=Math.ceil(HS*1.5*S.ROWS+HS/2)+4;
 
-function hexPath(cx,cy){ ctx.beginPath();
-  for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i-90); const px=cx+HS*0.94*Math.cos(a), py=cy+HS*0.94*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+function hexC(x,y){ return { cx:HS*S3*(x+0.5*(y&1))+HS*S3/2+2, cy:HS*1.5*y+HS+2 }; }
+function hexPath(cx,cy){ ctx.beginPath(); for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i-90);
+  const px=cx+HS*Math.cos(a), py=cy+HS*Math.sin(a); i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); }
+function pixelToTile(px,py){ let best=null,bd=1e9; for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y);
+  const d=(cx-px)**2+(cy-py)**2; if(d<bd){bd=d;best=t;} } return bd<HS*HS?best:null; }
 
 function render(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  const valid=new Set(sel==='grow'?api.growTargets(you):(sel?api.fruitTargets(you):[]));
-  for(const t of S.tiles){ const {cx,cy}=center(t);
+  const valid = sel && !S.over ? new Set(S.grid.filter(t=>api.canPlace(you,sel,t))) : new Set();
+  for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y);
     hexPath(cx,cy);
-    ctx.fillStyle = t.owner? FACTIONS[t.owner.faction].color+'40' : '#242a1e';
-    ctx.fill();
-    if(t.owner){ ctx.fillStyle=FACTIONS[t.owner.faction].color+'20'; ctx.fill(); }
-    ctx.lineWidth = valid.has(t)?3:1.2;
-    ctx.strokeStyle = valid.has(t)? (sel==='toxic'?'#e0524d':sel==='mimic'?'#c47cff':'var(--you)'==='var(--you)'?'#e8c34a':'#e8c34a') : '#3a4531';
-    if(valid.has(t)) ctx.strokeStyle = sel==='toxic'?'#e0524d':sel==='mimic'?'#c47cff':'#e8c34a';
-    ctx.stroke();
-    // mushroom glyph — hide the true nature of the RIVAL's edible/mimic (both look like 🍄)
-    if(t.mush){ const m=t.mush; let g='🍄';
-      if(m.owner===you){ g = m.type==='toxic'?'☠️':m.type==='mimic'?'🎭':'🍄'; }
-      else { g = m.type==='toxic'?'☠️':'🍄'; }         // rival mimic looks edible
-      ctx.font='19px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(g,cx,cy+1);
-      // owner ring
-      ctx.strokeStyle=FACTIONS[m.owner.faction].color; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,HS*0.5,0,7); ctx.stroke();
-    }
+    ctx.fillStyle=api.SUB[t.sub].color; ctx.fill();
+    if(t.owner){ const a=['','60','80','a0','c0','e0'][Math.min(5,Math.round(t.hp))]||'c0';
+      ctx.fillStyle=FACTIONS[t.owner.faction].color+a; ctx.fill(); }
+    ctx.lineWidth=valid.has(t)?2.5:1; ctx.strokeStyle=valid.has(t)?'#fff':'#00000040'; ctx.stroke();
+    if(t.struct){ ctx.font=(HS*1.05|0)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(GLYPH[t.struct],cx,cy+1); }
   }
-  // foragers
-  for(const f of S.foragers){ const {cx,cy}=center(api.get(f.q,f.r));
-    ctx.font='18px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🐿️',cx,cy-1); }
 }
 
-function syncPanel(){
-  document.getElementById('sc-you').textContent=you.score+'·'+api.count(you);
-  document.getElementById('sc-foe').textContent=foe.score+'·'+api.count(foe);
-  document.getElementById('rnd').textContent=S.round;
-  // toggle action availability
-  document.getElementById('a-grow').disabled=!api.canGrow(you)||busy;
-  for(const id of ['a-edible','a-toxic','a-mimic']) document.getElementById(id).disabled=!api.fruitTargets(you).length||busy;
-  coach();
+function palette(){
+  const box=document.getElementById('palette'); box.innerHTML='';
+  for(const k in BUILD){ const b=BUILD[k]; const el=document.createElement('button');
+    el.className=sel===k?'sel':''; el.dataset.k=k;
+    el.innerHTML=`${({hyphae:'🌱',fruit:'🍄',toxin:'☠️',symbiont:'🔗'})[k]} ${b.name} <span class="c">${api.cost(you,k)}</span><small>${b.desc}</small>`;
+    el.onclick=()=>{ sel=sel===k?null:k; palette();
+      document.getElementById('hint').textContent=sel?`Click a highlighted tile to build ${BUILD[sel].name}.`:''; render(); };
+    box.appendChild(el);
+  }
 }
-function coach(){ const el=document.getElementById('coach');
-  const nearF=S.foragers.some(f=>api.fruitTargets(you).some(t=>api.dist(t,{q:f.q,r:f.r})<=2));
-  let m;
-  if(busy) m=`<b>Rival's move…</b> then the foragers wander.`;
-  else if(nearF) m=`<b>A forager is near your ground.</b> Grow an <b>🍄 Edible</b> beside it — it'll harvest and spread you. Or set a <b>🎭 Mimic</b> to trap one heading for the rival.`;
-  else m=`<b>Your move.</b> Pick a trick, then tap a highlighted tile. <b>🍄 Edible</b> lures foragers, <b>🌱 Grow</b> claims safely, <b>☠️ Toxic</b> walls them off, <b>🎭 Mimic</b> looks edible but kills.`;
+function techPanel(){ const box=document.getElementById('tech'); box.innerHTML='';
+  for(const k in TECH){ const lvl=you.tech[k], c=api.techCost(lvl); const el=document.createElement('button');
+    el.disabled=lvl>=5||you.nutrients<c;
+    el.innerHTML=`<span>${TECH[k].name} <span class="pips">${[...Array(5)].map((_,i)=>`<span class="pip ${i<lvl?'on':''}"></span>`).join('')}</span></span><span class="c" style="color:var(--nut)">${lvl>=5?'max':c}</span>`;
+    el.title=TECH[k].desc;
+    el.onclick=()=>{ if(api.evolve(you,k)){ logMsg('Evolved '+TECH[k].name+' → '+(lvl+1)); sync(); } };
+    box.appendChild(el);
+  }
+}
+function sync(){
+  document.getElementById('h-nut').textContent=Math.floor(you.nutrients)+'/'+api.nutrientCap+' (+'+Math.round(api.income(you)*0.1)+')';
+  document.getElementById('h-you').textContent=api.tilesOf(you)+' ('+Math.round(100*api.share(you))+'%)';
+  document.getElementById('h-foe').textContent=api.tilesOf(foe)+' ('+Math.round(100*api.share(foe))+'%)';
+  const v=api.viable(), bar=document.getElementById('terrbar'); bar.innerHTML='';
+  const add=(w,c)=>{ const d=document.createElement('div'); d.style.width=w+'%'; d.style.background=c; bar.appendChild(d); };
+  add(100*api.tilesOf(you)/v, FACTIONS[you.faction].color);
+  add(100*api.tilesOf(foe)/v, FACTIONS[foe.faction].color); add(100*(v-api.tilesOf(you)-api.tilesOf(foe))/v,'#20241c');
+  palette(); techPanel(); coach();
+}
+function coach(){ const el=document.getElementById('coach'); let m;
+  if(api.tilesOf(you)<6) m=`<b>Grow your colony.</b> Build <b>🌱 Hyphae</b> onto open tiles to expand — more ground means more nutrient income. Head for rich <b>dung/wood</b> tiles.`;
+  else if(you.tech.diet===0 && you.nutrients>25) m=`<b>Invest.</b> Evolve <b>Diet</b> for more income, or drop a <b>🍄 Fruiting</b> body — it auto-colonises nearby tiles for you.`;
+  else if(api.frontier(you).some(t=>api.neighbors(t).some(n=>n.owner===foe))) m=`<b>Contact with the rival.</b> Build <b>☠️ Toxin</b> on your front tiles to poison and push into their ground.`;
+  else m=`<b>Expand, build, tech.</b> Spend nutrients on hyphae, fruiting bodies (auto-spread), toxins (attack), symbionts (income). Take 60% of the floor to win.`;
   el.innerHTML=m;
 }
 
-// ---- interaction ----
-for(const b of document.querySelectorAll('.acts button')){ b.onclick=()=>{ if(busy)return;
-  sel = sel===b.dataset.a ? null : b.dataset.a;
-  for(const x of document.querySelectorAll('.acts button')) x.classList.toggle('sel', x===b && sel);
-  document.getElementById('hint').textContent = sel? `Tap a highlighted tile to place your ${sel==='grow'?'mycelium':sel+' mushroom'}.` : '';
-  render(); }; }
+cv.addEventListener('click',e=>{ if(!sel||S.over)return; const r=cv.getBoundingClientRect();
+  const t=pixelToTile((e.clientX-r.left)*(cv.width/r.width),(e.clientY-r.top)*(cv.height/r.height));
+  if(t && api.build(you,sel,t)){ render(); sync(); }
+  else document.getElementById('hint').textContent = t? 'Can’t build there (need your own tile / enough nutrients).' : ''; });
 
-cv.addEventListener('click',e=>{ if(busy||!sel||S.over)return;
-  const r=cv.getBoundingClientRect(); const px=(e.clientX-r.left)*(cv.width/r.width), py=(e.clientY-r.top)*(cv.height/r.height);
-  let hit=null,bd=1e9; for(const t of S.tiles){ const {cx,cy}=center(t); const d=(cx-px)**2+(cy-py)**2; if(d<bd){bd=d;hit=t;} }
-  if(!hit||bd>HS*HS) return;
-  let ok = sel==='grow' ? api.grow(you,hit) : api.fruit(you,hit,sel);
-  if(!ok){ document.getElementById('hint').textContent='Not a legal spot for that.'; return; }
-  sel=null; for(const x of document.querySelectorAll('.acts button')) x.classList.remove('sel');
-  document.getElementById('hint').textContent=''; render(); syncPanel();
-  opponentPhase();
-});
+document.getElementById('play').onclick=()=>{ playing=!playing; document.getElementById('play').textContent=playing?'⏸':'▶'; loop(); };
+document.getElementById('speed').onclick=()=>{ speed=speed>=4?1:speed*2; document.getElementById('speed').textContent=speed+'×'; loop(); };
+function loop(){ if(timer)clearInterval(timer); if(!playing||S.over)return;
+  timer=setInterval(()=>{ api.tick(); render(); sync(); if(S.over){clearInterval(timer);endScreen();} }, Math.round(560/speed)); }
 
-function opponentPhase(){ busy=true; syncPanel(); render();
-  setTimeout(()=>{ api.endTurn(); render(); syncPanel();
-    busy=false; syncPanel(); render();
-    if(S.over) endScreen();
-  }, 550); }
-
-function logMsg(m){const d=document.getElementById('log');const e=document.createElement('div');e.textContent=(S?'R'+S.round+' ':'')+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
-function endScreen(){ const me=S.winnerP&&S.winnerP.isYou;
-  const t = S.reason==='draw'?'A draw' : me?'🍄 You win!':`${FACTIONS[S.winner].name} wins`;
-  const b = S.reason==='majority'?'controlled the majority of the forest floor.':S.reason==='draw'?'Even ground when the foragers ran out.':'held the most ground when the foragers ran out.';
-  document.getElementById('ov-t').textContent=t;
-  document.getElementById('ov-b').textContent=`You ${api.count(you)} tiles vs Rival ${api.count(foe)} — `+b;
+function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.tick:0;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='['+t+'] '+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
+function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou;
+  document.getElementById('ov-t').textContent=me?'🍄 Victory!':`${FACTIONS[S.winner].name} wins`;
+  document.getElementById('ov-b').textContent=`${me?'You':FACTIONS[S.winner].name} took ${Math.round(100*api.share(S.winnerCol))}% of the forest floor.`;
   document.getElementById('ov').style.display='flex'; }
 
-render(); syncPanel();
-logMsg('A duel begins. Lure the foragers; outwit the rival.');
+render(); sync(); loop();
+logMsg('Colony established. Decompose, expand, and out-grow the rival.');
 </script>
 </body>
 </html>
