@@ -66,8 +66,9 @@
 <script>
 const {createGame, FACTIONS, BUILD, TECH} = Mycelia;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let api,S,you,foe,HS,sel=null,playing=true,speed=1,timer=null;
+let api,S,you,foe,HS,sel=null,playing=false,speed=1,timer=null;   // start PAUSED so you can read first
 const GLYPH={fruit:'🍄',toxin:'☠️',symbiont:'🔗'};
+const NODE={dung:'💩',log:'🪵',carrion:'🦴'};   // rich resource nodes, clearly marked
 
 api=createGame({playerControlled:true, log:m=>logMsg(m)});
 S=api.state; you=api.you(); foe=api.foe();
@@ -86,10 +87,19 @@ function render(){
   const valid = sel && !S.over ? new Set(S.grid.filter(t=>api.canPlace(you,sel,t))) : new Set();
   for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y);
     hexPath(cx,cy);
-    ctx.fillStyle=api.SUB[t.sub].color; ctx.fill();
-    if(t.owner){ const a=['','60','80','a0','c0','e0'][Math.min(5,Math.round(t.hp))]||'c0';
-      ctx.fillStyle=FACTIONS[t.owner.faction].color+a; ctx.fill(); }
-    ctx.lineWidth=valid.has(t)?2.5:1; ctx.strokeStyle=valid.has(t)?'#fff':'#00000040'; ctx.stroke();
+    if(t.owner){
+      // OWNED = bold, opaque faction colour so it's unmistakable whose ground it is.
+      ctx.fillStyle=FACTIONS[t.owner.faction].color; ctx.fill();
+      ctx.fillStyle='#00000022'; ctx.fill();                 // slight darken for depth only
+    } else {
+      // neutral ground: muted substrate, so YOUR colour pops against it
+      ctx.fillStyle=api.SUB[t.sub].color; ctx.fill();
+      ctx.fillStyle='#0a0c0866'; ctx.fill();
+    }
+    ctx.lineWidth=valid.has(t)?3:1; ctx.strokeStyle=valid.has(t)?'#ffffff':'#0a0c0855'; ctx.stroke();
+    // rich resource nodes get a clear marker even when unclaimed
+    if(!t.owner && api.SUB[t.sub].rich>=3){ ctx.fillStyle='#000000'; ctx.font=(HS*0.8|0)+'px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(NODE[t.sub]||'',cx,cy+1); }
     if(t.struct){ ctx.font=(HS*1.05|0)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(GLYPH[t.struct],cx,cy+1); }
   }
 }
@@ -124,10 +134,10 @@ function sync(){
   palette(); techPanel(); coach();
 }
 function coach(){ const el=document.getElementById('coach'); let m;
-  if(api.tilesOf(you)<6) m=`<b>Grow your colony.</b> Build <b>🌱 Hyphae</b> onto open tiles to expand — more ground means more nutrient income. Head for rich <b>dung/wood</b> tiles.`;
-  else if(you.tech.diet===0 && you.nutrients>25) m=`<b>Invest.</b> Evolve <b>Diet</b> for more income, or drop a <b>🍄 Fruiting</b> body — it auto-colonises nearby tiles for you.`;
-  else if(api.frontier(you).some(t=>api.neighbors(t).some(n=>n.owner===foe))) m=`<b>Contact with the rival.</b> Build <b>☠️ Toxin</b> on your front tiles to poison and push into their ground.`;
-  else m=`<b>Expand, build, tech.</b> Spend nutrients on hyphae, fruiting bodies (auto-spread), toxins (attack), symbionts (income). Take 60% of the floor to win.`;
+  if(!playing && S.tick===0) m=`<b>You are gold (left); the rival is red (right).</b> Your mycelium spreads by itself toward rich ground. You just spend nutrients on <b>🍄 Fruiting</b> (surges growth in an area), <b>☠️ Toxin</b> (attacks the rival), <b>🔗 Symbiont</b> (more income), and <b>tech</b>. Read the board — the resource nodes are 💩 dung, 🪵 logs, 🦴 carcasses — then press <b>▶ Play</b>.`;
+  else if(!api.owned(you).some(t=>t.struct) && you.nutrients>=16) m=`<b>Make your first move.</b> Pick <b>🍄 Fruiting</b>, then click one of your gold tiles near a rich node to surge your growth toward it.`;
+  else if(api.frontier(you).some(t=>api.neighbors(t).some(n=>n.owner===foe))) m=`<b>You've met the rival (red).</b> Build <b>☠️ Toxin</b> on your front tiles to poison and push into their ground.`;
+  else m=`<b>Grow, build, tech.</b> Mycelium spreads itself; you place structures and evolve. Take 60% of the floor to win. Use <b>⏸</b> any time to plan.`;
   el.innerHTML=m;
 }
 
@@ -139,7 +149,7 @@ cv.addEventListener('click',e=>{ if(!sel||S.over)return; const r=cv.getBoundingC
 document.getElementById('play').onclick=()=>{ playing=!playing; document.getElementById('play').textContent=playing?'⏸':'▶'; loop(); };
 document.getElementById('speed').onclick=()=>{ speed=speed>=4?1:speed*2; document.getElementById('speed').textContent=speed+'×'; loop(); };
 function loop(){ if(timer)clearInterval(timer); if(!playing||S.over)return;
-  timer=setInterval(()=>{ api.tick(); render(); sync(); if(S.over){clearInterval(timer);endScreen();} }, Math.round(560/speed)); }
+  timer=setInterval(()=>{ api.tick(); render(); sync(); if(S.over){clearInterval(timer);endScreen();} }, Math.round(820/speed)); }
 
 function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.tick:0;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='['+t+'] '+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
 function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou;
@@ -147,8 +157,9 @@ function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou;
   document.getElementById('ov-b').textContent=`${me?'You':FACTIONS[S.winner].name} took ${Math.round(100*api.share(S.winnerCol))}% of the forest floor.`;
   document.getElementById('ov').style.display='flex'; }
 
-render(); sync(); loop();
-logMsg('Colony established. Decompose, expand, and out-grow the rival.');
+document.getElementById('play').textContent='▶';   // start paused — read first
+render(); sync();
+logMsg('Paused. You are GOLD. Read the board, then press ▶ to begin.');
 </script>
 </body>
 </html>

@@ -23,16 +23,15 @@ const SUB = {
   carrion: {name:'Carcass',     color:'#6e3a48', rich:6},
   barren:  {name:'Bare rock',   color:'#20241c', rich:0},
 };
-// buildable structures
+// buildable structures — you only ever place these (mycelium spreads on its own)
 const BUILD = {
-  hyphae:   {name:'Hyphae',   cost:3,  desc:'Extend into an open tile — more ground, more income'},
-  fruit:    {name:'Fruiting', cost:16, desc:'Emits spores that colonise nearby open tiles'},
+  fruit:    {name:'Fruiting', cost:16, desc:'Bursts spores — rapidly colonises the area around it'},
   toxin:    {name:'Toxin',    cost:14, desc:'Poisons adjacent rival ground — pushes the front'},
   symbiont: {name:'Symbiont', cost:14, desc:'+income to surrounding tiles (mycorrhiza)'},
 };
 const TECH = {
   diet:     {name:'Diet',      desc:'+income from every tile'},
-  mycelium: {name:'Mycelium',  desc:'Cheaper hyphae, denser tiles'},
+  mycelium: {name:'Mycelium',  desc:'Mycelium spreads faster, tiles hold denser'},
   virulence:{name:'Virulence', desc:'Toxins hit harder'},
   fecundity:{name:'Fecundity', desc:'Fruiting bodies emit spores faster'},
 };
@@ -133,31 +132,32 @@ function createGame(opts={}){
   const NCAP=260;   // bank cap — spend your economy, don't hoard it
   function tickEconomy(){ for(const c of g.colonies) c.nutrients=Math.min(NCAP, c.nutrients+income(c)*0.1); }
 
+  // mycelium spreads on its OWN, economy-gated — no tile micro. Prefers rich ground.
+  function autoExpand(col){
+    col._buf=(col._buf||0) + 0.4 + gv(col,'mycelium')*0.18;
+    while(col._buf>=1){ col._buf-=1; const f=frontier(col); if(!f.length) break;
+      const cst=Math.max(1, 2-gv(col,'mycelium')*0.2); if(col.nutrients<cst) break;
+      const t=f.sort((a,b)=>SUB[b.sub].rich-SUB[a.sub].rich)[0]; col.nutrients-=cst; claim(col,t,2+gv(col,'mycelium')); }
+  }
   function tick(){
     if(g.over) return; g.tick++;
     tickEconomy();
+    for(const c of g.colonies) autoExpand(c);
     for(const c of g.colonies) fruitEmit(c);
     for(const c of g.colonies) toxinPush(c);
-    // gentle passive hyphae creep so fronts stay live even without clicks
-    for(const c of g.colonies){ if(g.tick%3===0){ const f=frontier(c);
-      if(f.length && c.nutrients>5){ const t=f[Math.floor(rng()*f.length)]; c.nutrients-=1; claim(c,t,1+gv(c,'mycelium')); } } }
-    if(!(opts.playerControlled)) aiAct(g.colonies[0]);
-    aiAct(g.colonies[1]);
+    if(g.tick%4===0) aiAct(g.colonies[1]);          // rival makes a move now and then — not a blur
     checkWin();
   }
-
   function aiAct(col){
     if(col.isYou && opts.playerControlled) return;
-    // tech when flush
-    if(col.nutrients>techCost(gv(col,'diet'))+30 && rng()<0.3){ evolve(col, ['diet','mycelium','fecundity','virulence'][Math.floor(rng()*4)]); return; }
-    // expand aggressively; build fruiting on rich tiles; toxin where fronts touch the rival
+    if(col.nutrients>techCost(gv(col,'diet'))+24 && rng()<0.5){ evolve(col, ['diet','mycelium','fecundity','virulence'][Math.floor(rng()*4)]); return; }
     const foe=g.colonies[col.i^1];
     const contact=owned(col).filter(t=>!t.struct && neighbors(t).some(n=>n.owner===foe));
     if(contact.length && col.nutrients>=cost(col,'toxin') && rng()<0.5) return void build(col,'toxin',contact[0]);
     const rich=owned(col).filter(t=>!t.struct && SUB[t.sub].rich>=3);
-    if(rich.length && col.nutrients>=cost(col,'fruit') && rng()<0.4) return void build(col,'fruit',rich[Math.floor(rng()*rich.length)]);
-    const f=frontier(col); if(f.length && col.nutrients>=cost(col,'hyphae')){
-      const t=f.sort((a,b)=>SUB[b.sub].rich-SUB[a.sub].rich)[0]; build(col,'hyphae',t); }
+    if(rich.length && col.nutrients>=cost(col,'fruit') && rng()<0.5) return void build(col,'fruit',rich[Math.floor(rng()*rich.length)]);
+    const any=owned(col).filter(t=>!t.struct);
+    if(any.length && col.nutrients>=cost(col,'symbiont') && rng()<0.25) build(col,'symbiont',any[Math.floor(rng()*any.length)]);
   }
 
   function checkWin(){
