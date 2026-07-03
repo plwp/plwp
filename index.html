@@ -3,234 +3,220 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mycelia — Board Game Prototype</title>
+<title>Mycelia — Living Forest Prototype</title>
 <style>
-  :root{
-    --bg:#0e100d; --panel:#171b14; --panel2:#1f261b; --ink:#e9ede1; --muted:#8f9b82;
-    --line:#2d3726; --accent:#6ad08c;
-  }
+  :root{ --bg:#0e100d; --panel:#171b14; --panel2:#1f261b; --ink:#e9ede1; --muted:#8f9b82;
+    --line:#2d3726; --accent:#6ad08c; }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
-  body{background:var(--bg);color:var(--ink);
-    font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    display:flex;min-height:100vh}
-  #stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px;gap:10px;min-width:0}
-  h1{font-size:17px;margin:0;letter-spacing:.5px}
-  h1 small{color:var(--muted);font-weight:400;font-size:12px}
-  #top{width:100%;max-width:640px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-  /* territory scoreboard */
-  #terr{width:100%;max-width:640px}
-  #terrbar{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:#0a0c08}
-  #terrbar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#0a0c08;transition:width .35s;white-space:nowrap;overflow:hidden}
-  #terrlabels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px}
-  #coach{width:100%;max-width:640px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);
-    border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.4}
+  body{background:var(--bg);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;min-height:100vh}
+  #stage{flex:1;display:flex;flex-direction:column;align-items:center;padding:12px;gap:9px;min-width:0}
+  h1{font-size:16px;margin:0;letter-spacing:.5px}h1 small{color:var(--muted);font-weight:400;font-size:12px}
+  #top{width:100%;max-width:760px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  #terrbar{display:flex;height:22px;width:100%;max-width:760px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:#0a0c08}
+  #terrbar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#0a0c08;transition:width .3s;overflow:hidden}
+  #coach{width:100%;max-width:760px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;line-height:1.4}
   #coach b{color:var(--ink)}
-  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:10px;max-width:100%;height:auto;cursor:pointer}
-  #hint{color:var(--muted);font-size:12px;min-height:16px;text-align:center;max-width:640px}
-  aside{width:320px;background:var(--panel);border-left:1px solid var(--line);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
-  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
-  .card h2{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+  canvas{background:#0a0c08;border:1px solid var(--line);border-radius:10px;max-width:100%;height:auto;cursor:crosshair}
+  #hint{color:var(--muted);font-size:12px;min-height:15px;text-align:center;max-width:760px}
+  .controls{display:flex;gap:6px;align-items:center}
+  aside{width:300px;background:var(--panel);border-left:1px solid var(--line);padding:13px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px}
+  .card h2{margin:0 0 7px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
   .stat{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;margin:3px 0}
-  .stat b{font-weight:600}
-  .acts{display:flex;gap:6px;align-items:center}
-  .ap{width:16px;height:16px;border-radius:50%;background:#2d3726;border:1px solid var(--line)}
-  .ap.on{background:var(--accent);border-color:var(--accent)}
-  .verbs{display:flex;gap:6px;margin-top:8px}
-  .verbs button{flex:1;font-size:12px;padding:8px 4px}
-  .verbs button.active{background:var(--accent);color:#08130c;border-color:var(--accent)}
-  .trait{display:flex;align-items:center;gap:8px;margin:6px 0}
-  .trait .n{flex:1}.trait .n small{display:block;color:var(--muted);font-size:11px;line-height:1.25}
-  .pips{display:flex;gap:3px}.pip{width:9px;height:9px;border-radius:2px;background:#2d3726}.pip.on{background:#84c497}
+  .spore{height:20px;background:#0c1109;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative;margin-top:4px}
+  .spore .f{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#8a6cc4,#c47cff);transition:width .2s}
+  .spore .l{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;text-shadow:0 1px 2px #000}
   button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;transition:.12s}
   button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
   button:disabled{opacity:.4;cursor:not-allowed}
-  .up{padding:4px 8px;font-size:12px;min-width:30px}
-  #end{width:100%;padding:11px;font-weight:600;font-size:15px;border-color:var(--accent);color:var(--accent)}
-  #end:hover:not(:disabled){background:var(--accent);color:#08130c}
-  .cost{color:#e8c34a;font-size:11px}
-  #log{font-size:12px;color:var(--muted);max-height:120px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
+  #fruitbtn{width:100%;padding:10px;font-weight:600;border-color:#c47cff;color:#c47cff;margin-top:8px}
+  #fruitbtn.active{background:#c47cff;color:#160a1e}
+  .trait{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .trait .n{flex:1}.trait .n small{display:block;color:var(--muted);font-size:11px;line-height:1.2}
+  .pips{display:flex;gap:3px}.pip{width:9px;height:9px;border-radius:2px;background:#2d3726}
+  .up{padding:4px 8px;font-size:12px;min-width:44px}
+  .cost{color:#c47cff;font-size:11px}
+  #log{font-size:12px;color:var(--muted);max-height:110px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:2px}
   .ov{position:fixed;inset:0;background:#000d;display:flex;align-items:center;justify-content:center;z-index:10}
-  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 30px;max-width:520px;text-align:left}
-  .fcards{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-  .fcards button{flex:1;min-width:150px;text-align:left;padding:12px}
-  @media(max-width:880px){body{flex-direction:column}aside{width:100%;border-left:none;border-top:1px solid var(--line)}}
+  .ov .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 28px;max-width:600px;text-align:left}
+  .fcards{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.fcards button{flex:1;min-width:150px;text-align:left;padding:12px}
+  @media(max-width:900px){
+    body{flex-direction:column}
+    #stage{padding:8px;gap:7px}
+    aside{width:100%;border-left:none;border-top:1px solid var(--line);overflow:visible;padding:11px 11px 30px}
+    /* big, thumb-friendly controls; no tiny scroll box */
+    #fruitbtn{padding:16px;font-size:17px}
+    .controls button{padding:10px 14px;font-size:14px}
+    /* upgrades as a 2-up grid of tappable cards instead of a tall list */
+    #traits{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .trait{flex-direction:column;align-items:stretch;gap:6px;margin:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px}
+    .trait .pips{justify-content:center}.pip{width:12px;height:12px}
+    .up{width:100%;padding:11px;font-size:15px}
+    #log{max-height:70px}
+  }
 </style>
 </head>
 <body>
 <div id="stage">
   <div id="top">
-    <h1>🍄 Mycelia <small>— control the forest floor</small></h1>
-    <div style="font-size:12px;color:var(--muted)">Turn <b id="turn" style="color:var(--ink)">1</b> / <span id="season">40</span></div>
+    <h1>🍄 Mycelia <small>— a living forest floor</small></h1>
+    <div class="controls">
+      <button id="play">⏸ Pause</button>
+      <button id="speed">1×</button>
+      <span style="font-size:12px;color:var(--muted)">tick <b id="tick" style="color:var(--ink)">0</b></span>
+    </div>
   </div>
-  <div id="terr">
-    <div id="terrbar"></div>
-    <div id="terrlabels"></div>
-  </div>
+  <div id="terrbar"></div>
   <div id="coach">Pick a species to begin.</div>
-  <canvas id="cv" width="600" height="440"></canvas>
+  <canvas id="cv" width="760" height="520"></canvas>
   <div id="hint"></div>
 </div>
 
 <aside>
   <div class="card">
-    <h2>Your turn <span id="acts" class="acts" style="float:right"></span></h2>
-    <div class="stat"><span>Energy (spend on actions)</span><b id="s-energy">—</b></div>
-    <div class="stat"><span>Income / turn</span><b id="s-income">—</b></div>
-    <div class="stat"><span>Your tiles</span><b id="s-tiles">—</b></div>
-    <div class="stat"><span>Natural growth / turn</span><b id="s-growth" style="color:var(--accent)">—</b></div>
-    <div style="font-size:11px;color:var(--muted);margin:4px 0 6px">Your web spreads on its own each turn. Spend actions to <b style="color:var(--ink)">Expand</b> into a chosen/rival tile, <b style="color:var(--ink)">Fruit</b>, or <b style="color:var(--ink)">Upgrade</b>.</div>
-    <div class="verbs">
-      <button id="v-expand" class="active" title="Direct your growth — claim a specific tile now, or besiege a rival's">① 🌱 Push</button>
-      <button id="v-fruit" title="Grow mushrooms — foragers carry their spores to distant tiles">② 🍄 Fruit</button>
-    </div>
+    <h2>Spore energy</h2>
+    <div class="spore"><div class="f" id="spore-f"></div><div class="l" id="spore-l"></div></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">Energy builds over time. Spend it to <b style="color:var(--ink)">fruit</b> or <b style="color:var(--ink)">upgrade</b> — then watch the forest grow while it refills.</div>
+    <button id="fruitbtn">🍄 Fruit — grow a mushroom</button>
+    <div class="stat" style="margin-top:8px"><span>Your tiles</span><b id="s-tiles">—</b></div>
   </div>
 
-  <div class="card" style="border-color:#3a4a2e">
-    <h2>③ Upgrade — the third action <span id="up-note" style="float:right;text-transform:none;letter-spacing:0;color:#e8c34a">1 action each</span></h2>
+  <div class="card">
+    <h2>Upgrade</h2>
     <div id="traits"></div>
   </div>
 
-  <button id="end">End Turn ▸</button>
   <div class="card"><h2>Log</h2><div id="log"></div></div>
 </aside>
 
 <div id="start" class="ov"><div class="box" style="max-width:640px">
   <h2 style="margin:0">🍄 Mycelia</h2>
-  <p style="color:var(--muted);margin:6px 0 0">A board game for mushrooms. Each turn take <b style="color:var(--ink)">3 actions</b> — <b style="color:var(--ink)">Expand</b> into tiles, <b style="color:var(--ink)">Fruit</b> to leap across the map, or <b style="color:var(--ink)">Upgrade</b> your genome. <b style="color:var(--accent)">Control the majority of the floor to win.</b> Pick your species:</p>
+  <p style="color:var(--muted);margin:6px 0 0">A living forest floor. Your mycelium <b style="color:var(--ink)">blooms on its own</b>. Grow <b style="color:var(--ink)">fruiting bodies</b> to attract <b style="color:var(--ink)">foragers</b> — they carry your spores across the map and start new blooms. Fill the most ground to win. Pick your species:</p>
   <div class="fcards" id="fcards"></div>
 </div></div>
-
-<div id="ov" class="ov" style="display:none"><div class="box" style="text-align:center;max-width:440px">
-  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p>
-  <button onclick="location.reload()">New game ↺</button>
+<div id="ov" class="ov" style="display:none"><div class="box" style="text-align:center;max-width:420px">
+  <h2 id="ov-t"></h2><p id="ov-b" style="color:var(--muted)"></p><button onclick="location.reload()">New forest ↺</button>
 </div></div>
 
 <script src="./engine.js"></script>
 <script>
-const {createGame, POLICIES, FACTIONS, TRAITS} = Mycelia;
+const {createGame, FACTIONS, TRAITS} = Mycelia;
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-let api,S,you,TS,mode='expand';
+let api,S,you,S3,HS,playing=true,speed=1,timer=null;
 
-// ---------- start ----------
-(function buildStart(){
-  const box=document.getElementById('fcards');
-  for(const k in FACTIONS){ const f=FACTIONS[k];
-    const b=document.createElement('button'); b.style.borderColor=f.color+'66';
+(function(){ const box=document.getElementById('fcards');
+  for(const k in FACTIONS){ const f=FACTIONS[k]; const b=document.createElement('button'); b.style.borderColor=f.color+'66';
     b.innerHTML=`<div style="font-size:15px;color:${f.color}">${f.name}</div>
-      <div style="color:var(--muted);font-size:11px;margin:2px 0 6px">${f.tag} · niche: ${f.niche}</div>
-      <div style="font-size:12px;line-height:1.35">${f.effect}</div>
+      <div style="color:var(--muted);font-size:11px;margin:2px 0 6px">${f.tag} · niche ${f.niche}</div>
+      <div style="font-size:12px;line-height:1.3">${f.effect}</div>
       <div style="font-size:11px;line-height:1.3;margin-top:6px;color:${f.color}">✦ ${f.bonus.label} — ${f.bonus.desc}</div>`;
-    b.onclick=()=>start(k); box.appendChild(b);
-  }
+    b.onclick=()=>start(k); box.appendChild(b); }
 })();
+
 function start(fk){
-  api=createGame({playerFaction:fk, playerControlled:true, policyFor:()=>POLICIES.balanced, log:m=>logMsg(m)});
+  api=createGame({playerFaction:fk, playerControlled:true, log:m=>logMsg(m)});
   S=api.state; you=S.colonies.find(c=>c.isYou);
-  TS=Math.floor(cv.width/S.COLS); cv.width=TS*S.COLS; cv.height=TS*S.ROWS;
+  S3=Math.sqrt(3); HS=Math.min(15, Math.floor((cv.width-8)/((S.COLS+0.5)*S3)));
+  cv.width=Math.ceil((S.COLS+0.5)*S3*HS)+4; cv.height=Math.ceil(HS*1.5*S.ROWS+HS/2)+4;
   document.getElementById('start').style.display='none';
-  document.getElementById('season').textContent=S.season;
-  render(); sync(); logMsg(`You are ${FACTIONS[fk].name}. Take the majority of the board.`);
+  render(); syncPanel(); loop();
+  logMsg(`You are ${FACTIONS[fk].name}. Fruit to attract foragers and spread.`);
 }
 
-// ---------- render ----------
+// ---- hex geometry (pointy-top, odd-r) ----
+function hexC(x,y){ return { cx: HS*S3*(x+0.5*(y&1)) + HS*S3/2+2, cy: HS*1.5*y + HS+2 }; }
+function hexPath(cx,cy){ ctx.beginPath();
+  for(let i=0;i<6;i++){ const a=Math.PI/180*(60*i-90); const px=cx+HS*Math.cos(a), py=cy+HS*Math.sin(a);
+    i?ctx.lineTo(px,py):ctx.moveTo(px,py); } ctx.closePath(); }
+function pixelToTile(px,py){ let best=null,bd=1e9;
+  for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y); const d=(cx-px)**2+(cy-py)**2; if(d<bd){bd=d;best=t;} } return best; }
+
+// ---- render ----
 function render(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  const front = mode==='expand'&&!S.over ? new Set(api.frontier(you)) : new Set();
-  for(const t of S.grid){
-    const px=t.x*TS, py=t.y*TS;
-    // base substrate
-    ctx.fillStyle=api.SUB[t.sub].color; ctx.fillRect(px,py,TS,TS);
-    // ownership: faction-coloured block. Deeper growth level = bigger, brighter, + level pips.
+  for(const t of S.grid){ const {cx,cy}=hexC(t.x,t.y);
+    hexPath(cx,cy);
+    ctx.fillStyle=api.SUB[t.sub].color; ctx.fill();
     if(t.owner){ const fc=FACTIONS[t.owner.faction].color;
-      const pad=Math.max(2, 7-t.lvl*1.4);
-      ctx.fillStyle=fc+(['80','a0','c8','e8','ff'][Math.min(4,t.lvl-1)]||'e8');
-      ctx.fillRect(px+pad,py+pad,TS-2*pad,TS-2*pad);
-      ctx.fillStyle='#0a0c08cc'; for(let i=0;i<t.lvl;i++) ctx.fillRect(px+4+i*4,py+4,3,3); // level pips
-    }
-    // frontier highlight with expand cost
-    if(front.has(t)){ const c=api.expandCost(you,t), ok=you.energy>=c&&you.actions>0;
-      const enemy=t.owner&&t.owner!==you;
-      ctx.strokeStyle= ok?(enemy?'#e8a13a':'#6ad08c'):'#e0524d99'; ctx.lineWidth=2;
-      ctx.strokeRect(px+1.5,py+1.5,TS-3,TS-3);
-      ctx.fillStyle=ok?'#fff':'#e0524d'; ctx.font='bold 10px sans-serif'; ctx.fillText((enemy?'⚔':'')+c, px+4,py+13);
-    }
-    ctx.strokeStyle='#00000035'; ctx.lineWidth=1; ctx.strokeRect(px,py,TS,TS);
+      const a=['66','88','aa','cc','ee','ff'][Math.min(5,t.lvl)]||'cc';
+      ctx.fillStyle=fc+a; ctx.fill(); }
+    ctx.strokeStyle='#0000004d'; ctx.lineWidth=1; ctx.stroke();
+    // fruiting body: a little mushroom
+    if(t.fruit){ const oc=FACTIONS[t.fruit.owner.faction].color;
+      ctx.fillStyle='#f2ead8'; ctx.fillRect(cx-1,cy-1,2,HS*0.5);            // stem
+      ctx.fillStyle=oc; ctx.beginPath(); ctx.ellipse(cx,cy-1,HS*0.42,HS*0.3,0,Math.PI,0); ctx.fill(); // cap
+      ctx.fillStyle='#0a0c08'; for(let d=0;d<3;d++) ctx.fillRect(cx-3+d*3,cy-3,1,1); }
+  }
+  // foragers — visible agents; loaded ones glow in the faction colour they carry
+  for(const f of S.foragers){ const {cx,cy}=hexC(f.x,f.y);
+    if(f.load){ ctx.fillStyle=FACTIONS[f.load.faction].color; ctx.beginPath(); ctx.arc(cx,cy,4.2,0,7); ctx.fill();
+      ctx.strokeStyle='#000'; ctx.lineWidth=1; ctx.stroke(); }
+    else { ctx.fillStyle='#cdd3c2'; ctx.beginPath(); ctx.arc(cx,cy,3,0,7); ctx.fill(); }
   }
 }
 
-// ---------- scoreboard + panel ----------
-function sync(){
-  document.getElementById('turn').textContent=S.turn;
-  // territory bar
-  const v=api.viable(); const bar=document.getElementById('terrbar'), lbl=document.getElementById('terrlabels');
-  bar.innerHTML=''; lbl.innerHTML='';
+// ---- panel ----
+function syncPanel(){
+  document.getElementById('tick').textContent=S.tick;
+  const v=api.viable(), bar=document.getElementById('terrbar'); bar.innerHTML='';
   const segs=S.colonies.map(c=>({c,n:api.tilesOf(c)})).sort((a,b)=>b.n-a.n);
-  for(const {c,n} of segs){ if(n<=0) continue; const pctv=100*n/v;
-    const d=document.createElement('div'); d.style.width=pctv+'%'; d.style.background=FACTIONS[c.faction].color;
-    d.textContent=pctv>7?Math.round(pctv)+'%':''; bar.appendChild(d);
-    lbl.innerHTML+=`<span style="color:${FACTIONS[c.faction].color}">${FACTIONS[c.faction].name}${c.isYou?' (you)':''} ${Math.round(pctv)}%</span>`;
-  }
-  const neutral=v-segs.reduce((s,x)=>s+x.n,0);
-  if(neutral>0){ const d=document.createElement('div'); d.style.width=(100*neutral/v)+'%'; d.style.background='#20241c'; bar.appendChild(d); }
-  // your turn
-  document.getElementById('s-energy').textContent=Math.floor(you.energy)+' / '+api.energyCap;
-  document.getElementById('s-income').textContent='+'+Math.min(Math.round(api.income(you)),api.energyCap)+'/turn';
-  document.getElementById('s-tiles').textContent=api.tilesOf(you)+' / '+v+' ('+Math.round(100*api.share(you))+'%)';
-  document.getElementById('s-growth').textContent='+'+api.growthRate(you)+' tiles';
-  const acts=document.getElementById('acts'); acts.innerHTML='';
-  for(let i=0;i<api.actionsPerTurn;i++) acts.innerHTML+=`<div class="ap ${i<you.actions?'on':''}"></div>`;
-  document.getElementById('v-fruit').disabled=!api.canFruit(you);
-  document.getElementById('v-fruit').textContent=`🍄 Fruit (${api.fruitCost(you)}e)`;
-  // upgrades: 3 shared fruit modifiers + this faction's own chemistry
+  for(const {c,n} of segs){ if(!n)continue; const p=100*n/v; const d=document.createElement('div');
+    d.style.width=p+'%'; d.style.background=FACTIONS[c.faction].color; d.textContent=p>7?(c.isYou?'You ':'')+Math.round(p)+'%':''; bar.appendChild(d); }
+  const neu=v-segs.reduce((s,x)=>s+x.n,0); if(neu>0){ const d=document.createElement('div'); d.style.width=(100*neu/v)+'%'; d.style.background='#20241c'; bar.appendChild(d); }
+  const sp=you.spore, cap=api.sporeCap;
+  document.getElementById('spore-f').style.width=Math.min(100,100*sp/cap)+'%';
+  document.getElementById('spore-l').textContent=Math.floor(sp)+' / '+cap+(sp>=api.FRUIT_COST?' — ready to fruit':'');
+  document.getElementById('fruitbtn').disabled=!api.canFruit(you);
+  document.getElementById('s-tiles').textContent=api.tilesOf(you)+' ('+Math.round(100*api.share(you))+'%)';
   const box=document.getElementById('traits'); box.innerHTML='';
-  for(const tr of api.traitsFor(you)){ const lvl=you.genome[tr.key], c=api.upCost(lvl);
+  for(const tr of api.traitsFor(you)){ const lvl=you.genome[tr.key]||0, c=api.upCost(lvl), fc=FACTIONS[you.faction].color;
     const row=document.createElement('div'); row.className='trait';
-    const fc=FACTIONS[you.faction].color;
     row.innerHTML=`<div class="n">${tr.faction?`<span style="color:${fc}">✦ ${tr.label}</span>`:tr.label}<small>${tr.desc}</small></div>
-      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip ${i<lvl?'on':''}" ${tr.faction&&i<lvl?`style="background:${fc}"`:''}></div>`).join('')}</div>
-      <button class="up" ${lvl>=5||you.energy<c||you.actions<=0?'disabled':''}>${lvl>=5?'max':'+<span class=cost>'+c+'</span>'}</button>`;
-    if(lvl<5) row.querySelector('button').onclick=()=>{ if(api.upgrade(you,tr.key)){logMsg('Upgraded '+tr.label+' → '+(lvl+1));render();sync();} };
+      <div class="pips">${[...Array(5)].map((_,i)=>`<div class="pip" ${i<lvl?`style="background:${tr.faction?fc:'#84c497'}"`:''}></div>`).join('')}</div>
+      <button class="up" ${lvl>=5||you.spore<c?'disabled':''}>${lvl>=5?'max':'+ <span class=cost>'+c+'</span>'}</button>`;
+    if(lvl<5) row.querySelector('button').onclick=()=>{ if(api.upgrade(you,tr.key)){logMsg('Upgraded '+tr.label+' → '+(lvl+1));syncPanel();} };
     box.appendChild(row);
   }
   coach();
 }
-function coach(){
-  const el=document.getElementById('coach'); let m,e='var(--accent)';
-  const sh=api.share(you), lead=sh - Math.max(...S.colonies.filter(c=>!c.isYou).map(c=>api.share(c)));
-  if(you.actions<=0){ m=`<b>Out of actions.</b> Hit <b>End Turn</b> — your web will spread on its own and you'll bank income.`; }
-  else if(api.tilesOf(you)<=2){ m=`<b>Your mycelium grows on its own</b> each turn (see "Natural growth"). Upgrade <b>Mycelium</b> to spread faster, or <b>Push</b> into a rich tile now.`; }
-  else if(lead>0.15){ m=`<b>You're ahead (${Math.round(sh*100)}%).</b> Keep spreading toward 50%. Upgrade <b>Mycelium</b> to grow faster, or <b>Push</b> to besiege a rival.`; }
-  else if(lead<-0.12){ m=`<b>You're behind.</b> Upgrade <b>Mycelium</b> to grow faster, or <b>Fruit</b> to leap into open space and open a new front.`; e='#e8a13a'; }
-  else { m=`<b>Grow & choose.</b> Your web spreads itself; spend actions to <b>Push</b> for a key tile, <b>Fruit</b> far, or <b>Upgrade</b>. Aim for 50%.`; }
+function coach(){ const el=document.getElementById('coach'); let m,e='var(--accent)';
+  const sh=api.share(you);
+  if(api.tilesOf(you)===0){ m=`<b>Your colony died out.</b>`; }
+  else if(you.spore<api.FRUIT_COST){ m=`<b>Energy is building…</b> While you wait, watch your mycelium bloom. Soon you can <b>fruit</b> to attract foragers.`; }
+  else { m=`<b>You can act.</b> Tap <b>🍄 Fruit</b> to erupt a mushroom near open ground — foragers will carry your spores far. Or <b>Upgrade</b>.`; }
+  if(sh>0.4) m=`<b>You're winning (${Math.round(sh*100)}%).</b> Keep fruiting toward open ground to fill the forest.`;
   el.innerHTML=m; el.style.borderLeftColor=e;
 }
 
-// ---------- interaction ----------
-document.getElementById('v-expand').onclick=()=>setMode('expand');
-document.getElementById('v-fruit').onclick=()=>{ if(api.fruit(you)){render();sync();} };
-function setMode(m){ mode=m; document.getElementById('v-expand').classList.toggle('active',m==='expand'); render();
-  document.getElementById('hint').textContent = m==='expand'?'Click a highlighted tile to expand into it.':''; }
-cv.addEventListener('click',e=>{
-  if(S.over||mode!=='expand')return; const r=cv.getBoundingClientRect();
-  const x=Math.floor((e.clientX-r.left)/(r.width/S.COLS)), y=Math.floor((e.clientY-r.top)/(r.height/S.ROWS));
-  if(x<0||y<0||x>=S.COLS||y>=S.ROWS)return;
-  const t=S.grid[api.idx(x,y)];
-  if(new Set(api.frontier(you)).has(t)){ if(api.expand(you,t)){render();sync();}
-    else document.getElementById('hint').textContent = you.actions<=0?'No actions left — End Turn.':'Not enough energy for that tile.'; }
-});
-document.getElementById('end').onclick=()=>{ if(S.over)return; api.endTurn(); render(); sync();
-  if(S.over) endScreen(); };
+// ---- interaction ----
+// pick the best owned tile to fruit on: most open ground beside it, prefer your niche
+function bestFruitTile(){ return api.owned(you).filter(t=>!t.fruit)
+  .map(t=>({t,v:api.neighbors(t).filter(n=>!n.owner&&n.sub!=='barren').length + (t.sub===you.niche?1:0)}))
+  .sort((a,b)=>b.v-a.v)[0]; }
+document.getElementById('fruitbtn').onclick=()=>{ if(S.over)return;
+  const best=bestFruitTile();
+  if(best && best.v>0 && api.fruit(you,best.t)){ render(); syncPanel(); }
+  else document.getElementById('hint').textContent='No open ground to fruit toward yet — grow your mycelium outward first.'; };
+// optional precision on desktop: tap your own tile to fruit exactly there
+cv.addEventListener('click',e=>{ if(S.over||!api.canFruit(you))return; const r=cv.getBoundingClientRect();
+  const t=pixelToTile((e.clientX-r.left)*(cv.width/r.width),(e.clientY-r.top)*(cv.height/r.height));
+  if(t && t.owner===you && !t.fruit && api.fruit(you,t)){ render(); syncPanel(); } });
 
-function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.turn:1;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='T'+t+': '+m;d.appendChild(e);while(d.children.length>30)d.removeChild(d.firstChild);}
-function endScreen(){
-  const me=S.winnerCol&&S.winnerCol.isYou, wn=S.winner?FACTIONS[S.winner].name:'No one';
-  const reasons={majority:'controlled the majority of the floor',domination:'was the last colony standing',
-    decisive:'built a decisive, unstoppable lead',season:'held the most ground when the season ended'};
-  document.getElementById('ov-t').textContent = me?'🍄 You win!':`${wn} wins`;
-  document.getElementById('ov-b').textContent = `${wn} ${reasons[S.reason]||'won'} — ${Math.round(100*api.share(S.winnerCol))}% of the forest floor.`;
-  document.getElementById('ov').style.display='flex';
-}
+document.getElementById('play').onclick=()=>{ playing=!playing;
+  document.getElementById('play').textContent=playing?'⏸ Pause':'▶ Play'; loop(); };
+document.getElementById('speed').onclick=()=>{ speed=speed>=4?1:speed*2;
+  document.getElementById('speed').textContent=speed+'×'; loop(); };
+
+function loop(){ if(timer)clearInterval(timer); if(!playing||S.over)return;
+  timer=setInterval(()=>{ api.tick(); render(); syncPanel(); if(S.over){clearInterval(timer);endScreen();} }, 260/speed); }
+
+function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.tick:0;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='['+t+'] '+m;d.appendChild(e);while(d.children.length>25)d.removeChild(d.firstChild);}
+function endScreen(){ const me=S.winnerCol&&S.winnerCol.isYou, wn=S.winner?FACTIONS[S.winner].name:'No one';
+  const reasons={full:'filled the most of the forest',majority:'took the majority of the floor',domination:'was the last colony blooming'};
+  document.getElementById('ov-t').textContent=me?'🍄 You win!':`${wn} wins`;
+  document.getElementById('ov-b').textContent=`${wn} ${reasons[S.reason]||'won'} — ${Math.round(100*api.share(S.winnerCol))}% of the forest.`;
+  document.getElementById('ov').style.display='flex'; }
 </script>
 </body>
 </html>

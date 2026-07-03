@@ -1,11 +1,11 @@
 /* ============================================================
-   MYCELIA — domination engine (v3). Turn-based area control you can
-   SEE on the board. Each turn you EXPAND, FRUIT, or UPGRADE, spending
-   energy earned from the tiles you control. Win by controlling the
-   majority of the forest floor.
+   MYCELIA — living-forest engine (v4). A hex forest floor. Your
+   mycelium BLOOMS outward on its own; you grow FRUITING BODIES that
+   attract roaming FORAGERS, who physically carry your spores across
+   the map and seed new blooms. No tile-clicking growth, no turns —
+   it's alive and ticking; you fruit and upgrade, and steer.
 
-   Single source of truth for the UI (index.html) and the balance
-   simulator (sim.js). Instance-based + seedable RNG.
+   Single source of truth for the UI (index.html) and sim (sim.js).
    ============================================================ */
 (function (root, factory) {
   if (typeof module !== 'undefined' && module.exports) module.exports = factory();
@@ -13,38 +13,34 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
 
-// ---- substrates: income per turn + how hard to grow into. Barren = ungrowable. ----
 const SUB = {
-  soil:   {name:'Soil',   color:'#3f5233', income:1, cost:2, tough:0},
-  litter: {name:'Litter', color:'#4a3f2a', income:1, cost:2, tough:1},
-  dung:   {name:'Dung',   color:'#7a6a3a', income:2, cost:3, tough:1},
-  wood:   {name:'Wood',   color:'#6b4a2a', income:2, cost:4, tough:2},
-  barren: {name:'Barren', color:'#20241c', income:0, cost:99,tough:9},
+  soil:   {name:'Soil',   color:'#3f5233', vigor:1.0},
+  litter: {name:'Litter', color:'#4a3f2a', vigor:1.2},
+  dung:   {name:'Dung',   color:'#7a6a3a', vigor:1.6},
+  wood:   {name:'Wood',   color:'#6b4a2a', vigor:1.4},
+  barren: {name:'Barren', color:'#20241c', vigor:0},
 };
-const ENERGY_CAP = 16;   // bank at most this much — energy is a per-turn budget, not a hoard
-
-// ---- upgrades: three shared FRUIT modifiers (+ core growth). Simple. ----
 const TRAITS = [
-  {key:'mycelium', label:'Mycelium', desc:'Your web naturally spreads into MORE tiles each turn'},
-  {key:'gills',    label:'Gills',    desc:'Fruiting releases more spores'},
-  {key:'spores',   label:'Spores',   desc:'Spores travel farther — a puffball reaches across the map'},
+  {key:'mycelium', label:'Mycelium', desc:'Blooms faster and denser'},
+  {key:'fruiting', label:'Fruiting', desc:'Fruiting bodies are riper — foragers visit more'},
+  {key:'spores',   label:'Spores',   desc:'Foragers carry your spores much farther'},
 ];
-const upCost = lvl => 4 + lvl*4;
+const upCost = lvl => 10 + lvl*8;
+const FRUIT_COST = 10;
 
-// ---- factions: niche substrate + a UNIQUE signature chemistry (its own upgrade) ----
 const FACTIONS = {
   boletus:{ name:'Boletus', tag:'The Feast', color:'#e8c34a', niche:'wood',
-    bonus:{key:'taste', label:'Taste', desc:'Foragers love you — spores land far more reliably'},
-    effect:'Choice edible. The best spread on the floor.' },
+    bonus:{key:'taste', label:'Taste', desc:'Foragers flock to your fruit — most dispersal of all'},
+    effect:'Choice edible. Foragers can’t resist it.' },
   psilocybe:{ name:'Psilocybe', tag:'The Prophet', color:'#c47cff', niche:'dung',
-    bonus:{key:'psychotropic', label:'Psychotropics', desc:'Manipulated foragers fly your spores much farther'},
-    effect:'Psychedelic. Leaps clear across the map.' },
+    bonus:{key:'psychotropic', label:'Psychotropics', desc:'Tripping foragers wander far before dropping your spores'},
+    effect:'Psychedelic. Its spores end up everywhere.' },
   amanita:{ name:'Amanita', tag:'The Deceiver', color:'#e0524d', niche:'litter',
-    bonus:{key:'lethality', label:'Lethality', desc:'Toxic — your tiles are far harder to take'},
-    effect:'Deadly. Holds its ground like nothing else.' },
+    bonus:{key:'lethality', label:'Lethality', desc:'Toxic — resists being overgrown; poisons greedy foragers'},
+    effect:'Deadly. Holds its ground; kills careless foragers.' },
 };
 const FKEYS = Object.keys(FACTIONS);
-const bonusKey = f => FACTIONS[f].bonus.key;
+const bonusKey=f=>FACTIONS[f].bonus.key;
 
 function mulberry32(a){ return function(){
   a|=0; a=a+0x6D2B79F5|0;
@@ -52,200 +48,159 @@ function mulberry32(a){ return function(){
   return ((t^t>>>14)>>>0)/4294967296;
 };}
 
-// ============================================================
-//  GAME INSTANCE
-// ============================================================
+// odd-r offset hex neighbours
+const HEX=[
+  [[1,0],[0,-1],[-1,-1],[-1,0],[-1,1],[0,1]],   // even rows
+  [[1,0],[1,-1],[0,-1],[-1,0],[0,1],[1,1]],     // odd rows
+];
+
 function createGame(opts={}){
-  const COLS=opts.cols||15, ROWS=opts.rows||11;
+  const COLS=opts.cols||30, ROWS=opts.rows||22;
   const rng=opts.rng||Math.random;
   const logfn=opts.log||(()=>{});
   const facs=opts.factions||FKEYS.slice();
   const playerFaction=opts.playerFaction||facs[0];
+  const SPORE_CAP=40, N_FORAGERS=Math.round(COLS*ROWS/44);
 
-  const g={ COLS, ROWS, rng, turn:1, over:false, winner:null, winnerCol:null, reason:null,
-            season:opts.season||40, grid:[], colonies:[], mercy:0 };
+  const g={ COLS, ROWS, rng, tick:0, over:false, winner:null, winnerCol:null, reason:null,
+            grid:[], colonies:[], foragers:[] };
   const idx=(x,y)=>y*COLS+x;
   const inB=(x,y)=>x>=0&&y>=0&&x<COLS&&y<ROWS;
+  const gv=(c,k)=>c.genome[k]||0;
 
-  const ACTIONS_PER_TURN = opts.actions||3;   // board-game rhythm: 3 actions each turn
-  function mkColony(i,key){
-    const genome={mycelium:0,gills:1,spores:1}; genome[bonusKey(key)]=0;  // + faction chemistry
-    return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction,
-      genome, energy:9, actions:ACTIONS_PER_TURN };
-  }
-  // the upgrade menu for a colony = the 3 shared fruit modifiers + its own faction bonus
-  function traitsFor(col){ return TRAITS.concat([Object.assign({faction:true}, FACTIONS[col.faction].bonus)]); }
-  const gv=(col,k)=>col.genome[k]||0;   // genome value (0 if trait not on this faction)
+  function mkColony(i,key){ const genome={mycelium:0,fruiting:0,spores:0}; genome[bonusKey(key)]=0;
+    return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction, genome, spore:FRUIT_COST, buf:0 }; }
+
+  function offToCube(x,y){ const q=x-((y-(y&1))>>1); return [q,-q-y,y]; }
+  function hexDist(a,b){ const A=offToCube(a.x,a.y),B=offToCube(b.x,b.y);
+    return (Math.abs(A[0]-B[0])+Math.abs(A[1]-B[1])+Math.abs(A[2]-B[2]))/2; }
+  function neighbors(t){ const o=[]; for(const [dx,dy] of HEX[t.y&1]) if(inB(t.x+dx,t.y+dy)) o.push(g.grid[idx(t.x+dx,t.y+dy)]); return o; }
+
   function genMap(){
     g.grid=[];
     for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
-      const n=(Math.sin(x*0.6)+Math.cos(y*0.85)+Math.sin((x+y)*0.5))*1.25+2.2;
+      const n=(Math.sin(x*0.45)+Math.cos(y*0.55)+Math.sin((x+y)*0.35))*1.2+2.2;
       const kinds=['soil','litter','dung','wood','soil','litter'];
       let sub=kinds[Math.max(0,Math.min(kinds.length-1,Math.round(n)))];
-      if(rng()<0.08) sub='barren';
-      g.grid.push({x,y,sub,owner:null,lvl:0});
+      if(rng()<0.06) sub='barren';
+      g.grid.push({x,y,sub,owner:null,lvl:0,tt:-9,fruit:null});
     }
     g.colonies=facs.map((k,i)=>mkColony(i,k));
-    const spots={wood:[1,ROWS-2],dung:[COLS-2,1],litter:[1,1],soil:[COLS-2,ROWS-2]};
-    g.colonies.forEach(c=>{ let [sx,sy]=spots[c.niche]||[1,1];
-      const t=g.grid[idx(sx,sy)]; if(t.sub==='barren'){t.sub='soil';} t.owner=c; t.lvl=2; });
-    beginTurn();
+    const spots={wood:[4,ROWS-4],dung:[COLS-5,4],litter:[4,4],soil:[COLS-5,ROWS-4]};
+    g.colonies.forEach(c=>{ const [sx,sy]=spots[c.niche]||[4,4]; const t=g.grid[idx(sx,sy)];
+      if(t.sub==='barren')t.sub='soil'; t.owner=c; t.lvl=3; });
+    for(let i=0;i<N_FORAGERS;i++) g.foragers.push({ x:Math.floor(rng()*COLS), y:Math.floor(rng()*ROWS), load:null, carry:0 });
   }
 
-  // ---- geometry / territory ----
-  const owned=col=>g.grid.filter(t=>t.owner===col);
-  const tilesOf=col=>owned(col).length;
+  const owned=c=>g.grid.filter(t=>t.owner===c);
+  const tilesOf=c=>owned(c).length;
   const viable=()=>g.grid.filter(t=>t.sub!=='barren').length;
-  function share(col){ return owned(col).length/(viable()||1); }
-  function neighbors(t){ const out=[];
-    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) if(inB(t.x+dx,t.y+dy)) out.push(g.grid[idx(t.x+dx,t.y+dy)]);
-    return out; }
-  function frontier(col){ const set=new Set();
-    for(const t of owned(col)) for(const n of neighbors(t)) if(n.owner!==col && n.sub!=='barren') set.add(n);
-    return [...set]; }
+  const share=c=>tilesOf(c)/(viable()||1);
+  const open=()=>g.grid.filter(t=>!t.owner && t.sub!=='barren').length;
+  const MAXLVL=c=>3+gv(c,'mycelium');
 
-  // ---- costs ----
-  const MAXLVL = col => 2 + Math.floor(gv(col,'mycelium')/2);   // deeper density with Mycelium (2..4)
-  function expandCost(col,t){
-    let c=SUB[t.sub].cost;
-    if(t.owner && t.owner!==col) c += 1 + gv(t.owner,'lethality');   // rival's toxicity defends
-    return Math.max(1, Math.round(c));
-  }
-  // NATURAL GROWTH: each turn the mycelium (1) creeps into open adjacent tiles on its
-  // own, and (2) DEEPENS the tiles it already holds by one level (up to its max).
-  // Mycelium upgrades raise both the spread rate and the max depth. Never auto-contests
-  // rivals — that stays a deliberate Expand/siege action, so borders don't churn.
-  function naturalGrowth(col){
-    const before=owned(col);
-    let n=1+gv(col,'mycelium'), grew=0;
-    while(n-->0){
-      const open=frontier(col).filter(t=>!t.owner && t.sub!=='barren')
-        .map(t=>({t,v:SUB[t.sub].income+(t.sub===col.niche?1.5:0)+rng()*0.5}))
-        .sort((a,b)=>b.v-a.v);
-      if(!open.length) break;
-      open[0].t.owner=col; open[0].t.lvl=1; grew++;
+  // ---- bloom: organic local spread ----
+  function bloom(col){
+    const mine=owned(col); if(!mine.length) return;
+    col.buf += 1.2 + gv(col,'mycelium')*0.8 + gv(col,'taste')*0.4;
+    let budget=Math.floor(col.buf); col.buf-=budget;
+    for(const t of mine){ const mx=MAXLVL(col); if(t.lvl<mx && rng()<0.10) t.lvl++; }
+    let guard=0;
+    while(budget>0 && guard++<600){
+      const src=mine[Math.floor(rng()*mine.length)];
+      const ns=neighbors(src).filter(n=>n.sub!=='barren' && n.owner!==col);
+      if(!ns.length){ budget--; continue; }
+      const openN=ns.filter(n=>!n.owner);
+      const t=openN.length ? openN[Math.floor(rng()*openN.length)] : ns[Math.floor(rng()*ns.length)];
+      if(!t.owner){ t.owner=col; t.lvl=1; t.tt=g.tick; }
+      else if(t.tt!==g.tick){ const resist=t.lvl+gv(t.owner,'lethality'), force=src.lvl+gv(col,'mycelium');
+        if(force>resist && rng()<0.55){ t.lvl--; if(t.lvl<=0){ t.owner=col; t.lvl=1; t.tt=g.tick; } } }
+      budget--;
     }
-    const mx=MAXLVL(col);
-    for(const t of before) if(t.lvl<mx) t.lvl++;   // deepen held ground
-    return grew;
   }
-  function income(col){ let sum=0;
-    for(const t of owned(col)) sum += SUB[t.sub].income + Math.floor((t.lvl-1)/2) + (t.sub===col.niche?1:0); // deeper = a bit richer
-    return sum;
-  }
-  function fruitReach(col){ return 3 + gv(col,'spores')*2 + gv(col,'psychotropic')*3; }
-  function fruitCost(col){ return 4; }
 
-  // ---- the three verbs — each spends 1 ACTION + energy (return true on success) ----
-  function expand(col,t){
-    if(col.actions<=0 || t.owner===col || t.sub==='barren') return false;
-    if(!frontier(col).includes(t)) return false;
-    // a tile that just changed hands is locked for the rest of the turn — no ping-pong
-    if(t.owner && t.owner!==col && t.takenTurn===g.turn) return false;
-    const c=expandCost(col,t); if(col.energy<c) return false;
-    col.energy-=c; col.actions--;
-    if(t.owner && t.owner!==col){                 // SIEGE: knock its growth level down over turns
-      t.lvl-=1;
-      if(t.lvl<=0){ flip(col,t); }
-      else { logfn(`${who(col)} besieged ${who(t.owner)}'s tile — level ${t.lvl} left to break`); }
-    } else { flip(col,t); }
+  // ---- foragers: visible agents that carry spores between fruiting bodies and open ground ----
+  function ripeFruits(){ return g.grid.filter(t=>t.fruit && t.fruit.ripe>0); }
+  function moveForager(f){
+    const here=g.grid[idx(f.x,f.y)];
+    if(f.load){                                   // carrying spores → wander, then drop
+      f.carry--;
+      const step=neighbors(here); const t=step[Math.floor(rng()*step.length)]||here;
+      f.x=t.x; f.y=t.y;
+      const cur=g.grid[idx(f.x,f.y)];
+      if(f.carry<=0){                             // deposit a new bloom of the carried faction
+        if(!cur.owner && cur.sub!=='barren'){ cur.owner=f.load; cur.lvl=1; cur.tt=g.tick;
+          if(f.load.isYou) logfn('🐿️ A forager dropped your spores far off — a new bloom!'); }
+        f.load=null;
+      }
+      return;
+    }
+    // unladen: drift toward the most attractive nearby fruit (Taste pulls harder)
+    const fr=ripeFruits(); let target=null,best=1e9;
+    for(const t of fr){ const d=hexDist(here,t) - gv(t.fruit.owner,'taste')*0.8;
+      if(d<best && hexDist(here,t)<8){ best=d; target=t; } }
+    let nx=here;
+    if(target){ const step=neighbors(here).concat(here);
+      nx=step.reduce((a,b)=> hexDist(b,target)<hexDist(a,target)?b:a, here); }
+    else { const step=neighbors(here); nx=step[Math.floor(rng()*step.length)]||here; }
+    f.x=nx.x; f.y=nx.y;
+    const cur=g.grid[idx(f.x,f.y)];
+    if(cur.fruit && cur.fruit.ripe>0){            // pick up spores from the fruiting body
+      const own=cur.fruit.owner;
+      if(gv(own,'lethality')>0 && rng()<0.25+gv(own,'lethality')*0.12){  // toxic fruit poisons it
+        respawnForager(f); return; }
+      f.load=own; f.carry=3 + gv(own,'spores')*2 + gv(own,'psychotropic')*3;
+      cur.fruit.ripe--; if(cur.fruit.ripe<=0) cur.fruit=null;
+    }
+  }
+  function respawnForager(f){ f.load=null; f.carry=0; f.x=Math.floor(rng()*COLS); f.y=Math.floor(rng()*ROWS); }
+
+  function accrue(col){ col.spore=Math.min(SPORE_CAP, col.spore + 1 + tilesOf(col)*0.12); }
+
+  // ---- actions ----
+  function fruit(col,t){                          // grow a fruiting body on one of your tiles
+    if(!t||t.owner!==col||t.fruit||col.spore<FRUIT_COST) return false;
+    col.spore-=FRUIT_COST; t.fruit={owner:col, ripe:2+gv(col,'fruiting')};
+    if(col.isYou) logfn('🍄 A fruiting body erupts — foragers will come');
     return true;
   }
-  // a freshly taken/claimed tile starts at level 1, then deepens naturally each turn.
-  function flip(col,t){ const prev=t.owner; t.owner=col; t.lvl=1; t.takenTurn=g.turn;
-    if(prev) logfn(`${who(col)} broke through and took a tile from ${who(prev)}`); }
-  function fruit(col){
-    if(col.actions<=0) return false;
-    const c=fruitCost(col); if(col.energy<c) return false;
-    col.energy-=c; col.actions--;
-    const anchors=owned(col); if(!anchors.length) return false;
-    const reach=fruitReach(col), shots=gv(col,'gills')+gv(col,'spores');
-    const success=0.4 + gv(col,'spores')*0.05 + gv(col,'taste')*0.12;   // Taste lands reliably
-    let landed=0;
-    for(let s=0;s<shots;s++){ const a=anchors[Math.floor(rng()*anchors.length)];
-      const nx=Math.max(0,Math.min(COLS-1,a.x+Math.round((rng()*2-1)*reach)));
-      const ny=Math.max(0,Math.min(ROWS-1,a.y+Math.round((rng()*2-1)*reach)));
-      const t=g.grid[idx(nx,ny)];
-      if(!t.owner && t.sub!=='barren' && rng()<success){ t.owner=col; t.lvl=1; landed++; }
+  function upgrade(col,key){ const lvl=col.genome[key]||0; if(lvl>=5) return false;
+    const c=upCost(lvl); if(col.spore<c) return false; col.spore-=c; col.genome[key]=lvl+1; return true; }
+
+  function aiAct(col){
+    const build=['mycelium', bonusKey(col.faction), 'fruiting', 'spores'];
+    for(const k of build){ if((col.genome[k]||0)>=5) continue; if(col.spore>upCost(col.genome[k]||0)+FRUIT_COST){ if(upgrade(col,k))break; } }
+    if(col.spore>=FRUIT_COST && rng()<0.4){       // fruit on an edge tile beside open ground
+      const edge=owned(col).filter(t=>!t.fruit && neighbors(t).some(n=>!n.owner&&n.sub!=='barren'));
+      if(edge.length) fruit(col, edge[Math.floor(rng()*edge.length)]);
     }
-    logfn(`${who(col)} fruited — mushrooms drew foragers; ${landed} new colonies took hold far off`);
-    return true;
   }
-  function upgrade(col,key){ if(col.actions<=0) return false;
-    const lvl=col.genome[key]; if(lvl>=5) return false;
-    const c=upCost(lvl); if(col.energy<c) return false;
-    col.energy-=c; col.actions--; col.genome[key]++; return true; }
 
-  const who=c=>FACTIONS[c.faction].name;
-
-  // ---- turn flow ----
-  function beginTurn(){ for(const c of g.colonies){
-    const grew=naturalGrowth(c);                 // mycelium creeps outward on its own
-    c.energy=Math.min(ENERGY_CAP, c.energy+Math.round(income(c))); c.actions=ACTIONS_PER_TURN;
-    if(c.isYou && grew) logfn(`Your mycelium spread into ${grew} new tile${grew>1?'s':''}`);
-  } }
-  function endTurn(){
-    if(g.over) return;
-    // AI colonies take their turn
-    for(const c of g.colonies){ if(c.isYou && opts.playerControlled) continue;
-      (opts.policyFor?opts.policyFor(c):POLICIES.balanced)(api,c); }
-    g.turn++;
+  // ---- the tick ----
+  function tick(){
+    if(g.over) return; g.tick++;
+    for(const c of g.colonies) bloom(c);
+    for(const f of g.foragers) moveForager(f);
+    for(const c of g.colonies){ accrue(c); if(!(c.isYou&&opts.playerControlled)) aiAct(c); }
     checkWin();
-    if(!g.over) beginTurn();
   }
-
   function checkWin(){
-    const v=viable(); const alive=g.colonies.filter(c=>tilesOf(c)>0);
-    if(alive.length===1 && g.colonies.length>1) return finish(alive[0],'domination');
-    // majority control wins
+    const v=viable(), alive=g.colonies.filter(c=>tilesOf(c)>0);
+    if(alive.length<=1 && g.colonies.length>1) return finish(alive[0],'domination');
     for(const c of g.colonies) if(tilesOf(c)>v*0.5) return finish(c,'majority');
-    // mercy: a big, sustained lead ends it (no slog)
-    const rank=g.colonies.slice().sort((a,b)=>tilesOf(b)-tilesOf(a));
-    const lead=(tilesOf(rank[0])-tilesOf(rank[1]))/v;
-    if(lead>0.30){ g.mercy++; if(g.mercy>=3) return finish(rank[0],'decisive'); } else g.mercy=0;
-    if(g.turn>g.season) return finish(rank[0],'season');
+    if(open()===0){ const r=g.colonies.slice().sort((a,b)=>tilesOf(b)-tilesOf(a)); return finish(r[0],'full'); }
   }
-  function finish(col,reason){ g.over=true; g.winnerCol=col; g.winner=col?col.faction:null; g.reason=reason; }
+  function finish(col,reason){ g.over=true; g.winnerCol=col||null; g.winner=col?col.faction:null; g.reason=reason; }
 
-  const api={ state:g, SUB, TRAITS, FACTIONS, upCost, idx, inBounds:inB, neighbors,
-    owned, tilesOf, viable, share, frontier, expandCost, income, fruitReach, fruitCost,
-    expand, fruit, upgrade, endTurn, beginTurn, who:c=>FACTIONS[c.faction].name,
-    actionsPerTurn:ACTIONS_PER_TURN, traitsFor, energyCap:ENERGY_CAP,
-    growthRate:col=>1+gv(col,'mycelium'),
-    canFruit:col=>col.actions>0 && col.energy>=fruitCost(col) };
+  const api={ state:g, SUB, TRAITS, FACTIONS, upCost, FRUIT_COST, idx, inBounds:inB, neighbors, hexDist,
+    owned, tilesOf, viable, share, open, tick, fruit, upgrade,
+    who:c=>FACTIONS[c.faction].name, traitsFor:c=>TRAITS.concat([Object.assign({faction:true},FACTIONS[c.faction].bonus)]),
+    canFruit:c=>c.spore>=FRUIT_COST, sporeCap:SPORE_CAP };
   genMap();
   return api;
 }
 
-// ============================================================
-//  POLICIES — how an AI faction plays a turn (also the sim's strategies)
-// ============================================================
-function play(api, col, {expandBias, fruitBias}){
-  const s=api.state;
-  const build=['mycelium', api.FACTIONS[col.faction].bonus.key, 'gills', 'spores'];
-  // upgrade first if flush
-  for(const key of build){ if((col.genome[key]||0)>=5) continue;
-    if(col.energy > api.upCost(col.genome[key]||0) + 6){ if(api.upgrade(col,key)) break; } }
-  // fruit to open fronts when affordable and inclined
-  if(api.canFruit(col) && s.rng() < fruitBias) api.fruit(col);
-  // expand along cheapest valuable frontier while energy lasts
-  let guard=0;
-  while(guard++<40){
-    const opts=api.frontier(col).map(t=>{ const enemy=t.owner&&t.owner!==col;
-        let v=api.SUB[t.sub].income + (t.sub===col.niche?1:0);
-        v += enemy ? -2 : 2;                     // strongly prefer open ground; siege only if boxed in
-        return {t,c:api.expandCost(col,t),v}; })
-      .filter(o=>col.energy>=o.c && o.v>0).sort((a,b)=>(b.v/b.c)-(a.v/a.c));
-    if(!opts.length) break;
-    if(s.rng()>expandBias && col.energy<10) break;   // sometimes bank energy
-    if(!api.expand(col,opts[0].t)) break;
-  }
-}
-const POLICIES = {
-  balanced: (api,col)=>play(api,col,{expandBias:0.9,fruitBias:0.4}),
-  blitz:    (api,col)=>play(api,col,{expandBias:1.0,fruitBias:0.2}),
-  spreader: (api,col)=>play(api,col,{expandBias:0.7,fruitBias:0.9}),
-};
+function autoplay(api,maxTicks=800){ const s=api.state; let n=0; while(!s.over&&n++<maxTicks) api.tick(); return {ticks:s.tick,winner:s.winner,reason:s.reason}; }
 
-return { createGame, POLICIES, FACTIONS, TRAITS, SUB, upCost, mulberry32 };
+return { createGame, FACTIONS, TRAITS, SUB, upCost, mulberry32, autoplay };
 });
