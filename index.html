@@ -78,14 +78,15 @@
     <div class="stat"><span>Energy (spend on actions)</span><b id="s-energy">—</b></div>
     <div class="stat"><span>Income / turn</span><b id="s-income">—</b></div>
     <div class="stat"><span>Your tiles</span><b id="s-tiles">—</b></div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">Each action: ① Expand, ② Fruit, or ③ Upgrade (below).</div>
     <div class="verbs">
-      <button id="v-expand" class="active" title="Click an adjacent tile to grow into it">🌱 Expand</button>
-      <button id="v-fruit" title="Grow mushrooms — foragers carry their spores to distant tiles">🍄 Fruit</button>
+      <button id="v-expand" class="active" title="Click an adjacent tile to grow into it">① 🌱 Expand</button>
+      <button id="v-fruit" title="Grow mushrooms — foragers carry their spores to distant tiles">② 🍄 Fruit</button>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Upgrade genome <span style="float:right;text-transform:none;letter-spacing:0;color:#e8c34a">1 action + energy</span></h2>
+  <div class="card" style="border-color:#3a4a2e">
+    <h2>③ Upgrade — the third action <span id="up-note" style="float:right;text-transform:none;letter-spacing:0;color:#e8c34a">1 action each</span></h2>
     <div id="traits"></div>
   </div>
 

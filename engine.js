@@ -32,7 +32,7 @@ const TRAITS = [
   {key:'gills',    label:'Gills',    desc:'Fruit flings more spores', verb:'fruit'},
   {key:'spores',   label:'Spores',   desc:'Fruit reaches farther, lands better', verb:'fruit'},
 ];
-const upCost = lvl => 5 + lvl*4;
+const upCost = lvl => 4 + lvl*4;
 
 // ---- factions: niche substrate + a signature edge ----
 const FACTIONS = {
@@ -70,7 +70,7 @@ function createGame(opts={}){
   function mkColony(i,key){
     return { i, faction:key, niche:FACTIONS[key].niche, isYou:key===playerFaction,
       genome:{mycelium:0,diet:0,toxicity:0,mimicry:0,symbiosis:0,gills:1,spores:1},
-      energy:6, actions:ACTIONS_PER_TURN };
+      energy:9, actions:ACTIONS_PER_TURN };
   }
   function genMap(){
     g.grid=[];
@@ -105,8 +105,8 @@ function createGame(opts={}){
     let c=SUB[t.sub].cost - col.genome.mycelium;
     if(col.faction && FACTIONS[col.faction].sig==='cheap-wood' && t.sub==='wood') c-=2; // Boletus edge
     if(t.owner && t.owner!==col){                 // encroaching on a rival costs their defence
-      c += 2 + t.str + (t.owner.genome.toxicity) - col.genome.mimicry;
-      if(FACTIONS[t.owner.faction].sig==='tough-hold') c+=1;  // Amanita edge
+      c += 1 + t.owner.genome.toxicity - col.genome.mimicry;   // (str is siege HP, not cost)
+      if(FACTIONS[t.owner.faction].sig==='tough-hold') c+=1;   // Amanita edge
     }
     return Math.max(1, Math.round(c));
   }
@@ -123,15 +123,21 @@ function createGame(opts={}){
   function expand(col,t){
     if(col.actions<=0 || t.owner===col || t.sub==='barren') return false;
     if(!frontier(col).includes(t)) return false;
+    // a tile that just changed hands is locked for the rest of the turn — no ping-pong
+    if(t.owner && t.owner!==col && t.takenTurn===g.turn) return false;
     const c=expandCost(col,t); if(col.energy<c) return false;
     col.energy-=c; col.actions--;
-    if(t.owner && t.owner!==col){ t.str-=1; if(t.str<=0){ flip(col,t); }  // wear down, then flip
-      else { logfn(`${who(col)} pressed into ${who(t.owner)}'s ground`); } }
-    else { flip(col,t); }
+    if(t.owner && t.owner!==col){                 // SIEGE: wear the tile's strength down over turns
+      t.str-=1;
+      if(t.str<=0){ flip(col,t); }
+      else { logfn(`${who(col)} besieged ${who(t.owner)}'s tile — ${t.str} to break`); }
+    } else { flip(col,t); }
     return true;
   }
-  function flip(col,t){ const prev=t.owner; t.owner=col; t.str=1+Math.floor(col.genome.toxicity/2);
-    if(prev) logfn(`${who(col)} took a tile from ${who(prev)}`); }
+  // claimed tiles get real strength so they can't be snatched straight back
+  function flip(col,t){ const prev=t.owner; t.owner=col;
+    t.str=(prev?3:2)+Math.floor(col.genome.toxicity/2); t.takenTurn=g.turn;
+    if(prev) logfn(`${who(col)} broke through and took a tile from ${who(prev)}`); }
   function fruit(col){
     if(col.actions<=0) return false;
     const c=fruitCost(col); if(col.energy<c) return false;
@@ -202,9 +208,11 @@ function play(api, col, {expandBias, fruitBias, build}){
   // expand along cheapest valuable frontier while energy lasts
   let guard=0;
   while(guard++<40){
-    const opts=api.frontier(col).map(t=>({t,c:api.expandCost(col,t),
-      v:api.SUB[t.sub].income + (t.owner&&t.owner!==col?1.5:0) + (t.sub===col.niche?1:0)}))
-      .filter(o=>col.energy>=o.c).sort((a,b)=>(b.v/b.c)-(a.v/a.c));
+    const opts=api.frontier(col).map(t=>{ const enemy=t.owner&&t.owner!==col;
+        let v=api.SUB[t.sub].income + (t.sub===col.niche?1:0);
+        v += enemy ? -2 : 2;                     // strongly prefer open ground; siege only if boxed in
+        return {t,c:api.expandCost(col,t),v}; })
+      .filter(o=>col.energy>=o.c && o.v>0).sort((a,b)=>(b.v/b.c)-(a.v/a.c));
     if(!opts.length) break;
     if(s.rng()>expandBias && col.energy<10) break;   // sometimes bank energy
     if(!api.expand(col,opts[0].t)) break;
