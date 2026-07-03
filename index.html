@@ -78,9 +78,10 @@
     <div class="stat"><span>Energy (spend on actions)</span><b id="s-energy">—</b></div>
     <div class="stat"><span>Income / turn</span><b id="s-income">—</b></div>
     <div class="stat"><span>Your tiles</span><b id="s-tiles">—</b></div>
-    <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">Each action: ① Expand, ② Fruit, or ③ Upgrade (below).</div>
+    <div class="stat"><span>Natural growth / turn</span><b id="s-growth" style="color:var(--accent)">—</b></div>
+    <div style="font-size:11px;color:var(--muted);margin:4px 0 6px">Your web spreads on its own each turn. Spend actions to <b style="color:var(--ink)">Expand</b> into a chosen/rival tile, <b style="color:var(--ink)">Fruit</b>, or <b style="color:var(--ink)">Upgrade</b>.</div>
     <div class="verbs">
-      <button id="v-expand" class="active" title="Click an adjacent tile to grow into it">① 🌱 Expand</button>
+      <button id="v-expand" class="active" title="Direct your growth — claim a specific tile now, or besiege a rival's">① 🌱 Push</button>
       <button id="v-fruit" title="Grow mushrooms — foragers carry their spores to distant tiles">② 🍄 Fruit</button>
     </div>
   </div>
@@ -140,10 +141,12 @@ function render(){
     const px=t.x*TS, py=t.y*TS;
     // base substrate
     ctx.fillStyle=api.SUB[t.sub].color; ctx.fillRect(px,py,TS,TS);
-    // ownership tint (strong faction colour block = clearly whose tile it is)
-    if(t.owner){ ctx.fillStyle=FACTIONS[t.owner.faction].color+'d8'; ctx.fillRect(px+3,py+3,TS-6,TS-6);
-      // strength pips
-      ctx.fillStyle='#0a0c08aa'; for(let i=0;i<t.str;i++) ctx.fillRect(px+5+i*5,py+TS-8,3,3);
+    // ownership: faction-coloured block. Deeper growth level = bigger, brighter, + level pips.
+    if(t.owner){ const fc=FACTIONS[t.owner.faction].color;
+      const pad=Math.max(2, 7-t.lvl*1.4);
+      ctx.fillStyle=fc+(['80','a0','c8','e8','ff'][Math.min(4,t.lvl-1)]||'e8');
+      ctx.fillRect(px+pad,py+pad,TS-2*pad,TS-2*pad);
+      ctx.fillStyle='#0a0c08cc'; for(let i=0;i<t.lvl;i++) ctx.fillRect(px+4+i*4,py+4,3,3); // level pips
     }
     // frontier highlight with expand cost
     if(front.has(t)){ const c=api.expandCost(you,t), ok=you.energy>=c&&you.actions>0;
@@ -171,9 +174,10 @@ function sync(){
   const neutral=v-segs.reduce((s,x)=>s+x.n,0);
   if(neutral>0){ const d=document.createElement('div'); d.style.width=(100*neutral/v)+'%'; d.style.background='#20241c'; bar.appendChild(d); }
   // your turn
-  document.getElementById('s-energy').textContent=Math.floor(you.energy);
-  document.getElementById('s-income').textContent='+'+Math.round(api.income(you));
+  document.getElementById('s-energy').textContent=Math.floor(you.energy)+' / '+api.energyCap;
+  document.getElementById('s-income').textContent='+'+Math.min(Math.round(api.income(you)),api.energyCap)+'/turn';
   document.getElementById('s-tiles').textContent=api.tilesOf(you)+' / '+v+' ('+Math.round(100*api.share(you))+'%)';
+  document.getElementById('s-growth').textContent='+'+api.growthRate(you)+' tiles';
   const acts=document.getElementById('acts'); acts.innerHTML='';
   for(let i=0;i<api.actionsPerTurn;i++) acts.innerHTML+=`<div class="ap ${i<you.actions?'on':''}"></div>`;
   document.getElementById('v-fruit').disabled=!api.canFruit(you);
@@ -194,12 +198,11 @@ function sync(){
 function coach(){
   const el=document.getElementById('coach'); let m,e='var(--accent)';
   const sh=api.share(you), lead=sh - Math.max(...S.colonies.filter(c=>!c.isYou).map(c=>api.share(c)));
-  if(you.actions<=0){ m=`<b>Out of actions.</b> Hit <b>End Turn</b> to collect income and let rivals move.`; }
-  else if(api.tilesOf(you)<=2){ m=`<b>Grow outward.</b> Click a glowing tile to <b>Expand</b> into it. Cheaper tiles (soil/litter) are shown with a small number.`; }
-  else if(you.energy<3){ m=`<b>Low on energy.</b> You earn energy each turn from tiles you hold. End the turn to bank income, or take one cheap tile.`; }
-  else if(lead>0.15){ m=`<b>You're ahead (${Math.round(sh*100)}%).</b> Keep pressing — reach 50% of the board to win.`; }
-  else if(lead<-0.12){ m=`<b>You're behind.</b> Grab rich tiles (dung/wood) for more income, or <b>Fruit</b> to leap into open space and open a new front.`; e='#e8a13a'; }
-  else { m=`<b>Take an action.</b> <b>Expand</b> into tiles, <b>Fruit</b> to jump far, or <b>Upgrade</b>. Aim for 50% of the floor.`; }
+  if(you.actions<=0){ m=`<b>Out of actions.</b> Hit <b>End Turn</b> — your web will spread on its own and you'll bank income.`; }
+  else if(api.tilesOf(you)<=2){ m=`<b>Your mycelium grows on its own</b> each turn (see "Natural growth"). Upgrade <b>Mycelium</b> to spread faster, or <b>Push</b> into a rich tile now.`; }
+  else if(lead>0.15){ m=`<b>You're ahead (${Math.round(sh*100)}%).</b> Keep spreading toward 50%. Upgrade <b>Mycelium</b> to grow faster, or <b>Push</b> to besiege a rival.`; }
+  else if(lead<-0.12){ m=`<b>You're behind.</b> Upgrade <b>Mycelium</b> to grow faster, or <b>Fruit</b> to leap into open space and open a new front.`; e='#e8a13a'; }
+  else { m=`<b>Grow & choose.</b> Your web spreads itself; spend actions to <b>Push</b> for a key tile, <b>Fruit</b> far, or <b>Upgrade</b>. Aim for 50%.`; }
   el.innerHTML=m; el.style.borderLeftColor=e;
 }
 
@@ -219,7 +222,7 @@ cv.addEventListener('click',e=>{
 document.getElementById('end').onclick=()=>{ if(S.over)return; api.endTurn(); render(); sync();
   if(S.over) endScreen(); };
 
-function logMsg(m){const d=document.getElementById('log');const e=document.createElement('div');e.textContent='T'+S.turn+': '+m;d.appendChild(e);while(d.children.length>30)d.removeChild(d.firstChild);}
+function logMsg(m){const t=(typeof S!=='undefined'&&S)?S.turn:1;const d=document.getElementById('log');const e=document.createElement('div');e.textContent='T'+t+': '+m;d.appendChild(e);while(d.children.length>30)d.removeChild(d.firstChild);}
 function endScreen(){
   const me=S.winnerCol&&S.winnerCol.isYou, wn=S.winner?FACTIONS[S.winner].name:'No one';
   const reasons={majority:'controlled the majority of the floor',domination:'was the last colony standing',

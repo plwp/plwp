@@ -16,15 +16,16 @@
 // ---- substrates: income per turn + how hard to grow into. Barren = ungrowable. ----
 const SUB = {
   soil:   {name:'Soil',   color:'#3f5233', income:1, cost:2, tough:0},
-  litter: {name:'Litter', color:'#4a3f2a', income:2, cost:2, tough:1},
-  dung:   {name:'Dung',   color:'#7a6a3a', income:3, cost:3, tough:1},
-  wood:   {name:'Wood',   color:'#6b4a2a', income:4, cost:4, tough:2},
+  litter: {name:'Litter', color:'#4a3f2a', income:1, cost:2, tough:1},
+  dung:   {name:'Dung',   color:'#7a6a3a', income:2, cost:3, tough:1},
+  wood:   {name:'Wood',   color:'#6b4a2a', income:2, cost:4, tough:2},
   barren: {name:'Barren', color:'#20241c', income:0, cost:99,tough:9},
 };
+const ENERGY_CAP = 16;   // bank at most this much — energy is a per-turn budget, not a hoard
 
 // ---- upgrades: three shared FRUIT modifiers (+ core growth). Simple. ----
 const TRAITS = [
-  {key:'mycelium', label:'Mycelium', desc:'Expand into tiles for less energy'},
+  {key:'mycelium', label:'Mycelium', desc:'Your web naturally spreads into MORE tiles each turn'},
   {key:'gills',    label:'Gills',    desc:'Fruiting releases more spores'},
   {key:'spores',   label:'Spores',   desc:'Spores travel farther — a puffball reaches across the map'},
 ];
@@ -82,12 +83,12 @@ function createGame(opts={}){
       const kinds=['soil','litter','dung','wood','soil','litter'];
       let sub=kinds[Math.max(0,Math.min(kinds.length-1,Math.round(n)))];
       if(rng()<0.08) sub='barren';
-      g.grid.push({x,y,sub,owner:null,str:0});
+      g.grid.push({x,y,sub,owner:null,lvl:0});
     }
     g.colonies=facs.map((k,i)=>mkColony(i,k));
     const spots={wood:[1,ROWS-2],dung:[COLS-2,1],litter:[1,1],soil:[COLS-2,ROWS-2]};
     g.colonies.forEach(c=>{ let [sx,sy]=spots[c.niche]||[1,1];
-      const t=g.grid[idx(sx,sy)]; if(t.sub==='barren'){t.sub='soil';} t.owner=c; t.str=3; });
+      const t=g.grid[idx(sx,sy)]; if(t.sub==='barren'){t.sub='soil';} t.owner=c; t.lvl=2; });
     beginTurn();
   }
 
@@ -104,13 +105,32 @@ function createGame(opts={}){
     return [...set]; }
 
   // ---- costs ----
+  const MAXLVL = col => 2 + Math.floor(gv(col,'mycelium')/2);   // deeper density with Mycelium (2..4)
   function expandCost(col,t){
-    let c=SUB[t.sub].cost - gv(col,'mycelium');
+    let c=SUB[t.sub].cost;
     if(t.owner && t.owner!==col) c += 1 + gv(t.owner,'lethality');   // rival's toxicity defends
     return Math.max(1, Math.round(c));
   }
+  // NATURAL GROWTH: each turn the mycelium (1) creeps into open adjacent tiles on its
+  // own, and (2) DEEPENS the tiles it already holds by one level (up to its max).
+  // Mycelium upgrades raise both the spread rate and the max depth. Never auto-contests
+  // rivals — that stays a deliberate Expand/siege action, so borders don't churn.
+  function naturalGrowth(col){
+    const before=owned(col);
+    let n=1+gv(col,'mycelium'), grew=0;
+    while(n-->0){
+      const open=frontier(col).filter(t=>!t.owner && t.sub!=='barren')
+        .map(t=>({t,v:SUB[t.sub].income+(t.sub===col.niche?1.5:0)+rng()*0.5}))
+        .sort((a,b)=>b.v-a.v);
+      if(!open.length) break;
+      open[0].t.owner=col; open[0].t.lvl=1; grew++;
+    }
+    const mx=MAXLVL(col);
+    for(const t of before) if(t.lvl<mx) t.lvl++;   // deepen held ground
+    return grew;
+  }
   function income(col){ let sum=0;
-    for(const t of owned(col)) sum += SUB[t.sub].income + (t.sub===col.niche?1:0);  // niche bonus
+    for(const t of owned(col)) sum += SUB[t.sub].income + Math.floor((t.lvl-1)/2) + (t.sub===col.niche?1:0); // deeper = a bit richer
     return sum;
   }
   function fruitReach(col){ return 3 + gv(col,'spores')*2 + gv(col,'psychotropic')*3; }
@@ -124,17 +144,15 @@ function createGame(opts={}){
     if(t.owner && t.owner!==col && t.takenTurn===g.turn) return false;
     const c=expandCost(col,t); if(col.energy<c) return false;
     col.energy-=c; col.actions--;
-    if(t.owner && t.owner!==col){                 // SIEGE: wear the tile's strength down over turns
-      t.str-=1;
-      if(t.str<=0){ flip(col,t); }
-      else { logfn(`${who(col)} besieged ${who(t.owner)}'s tile — ${t.str} to break`); }
+    if(t.owner && t.owner!==col){                 // SIEGE: knock its growth level down over turns
+      t.lvl-=1;
+      if(t.lvl<=0){ flip(col,t); }
+      else { logfn(`${who(col)} besieged ${who(t.owner)}'s tile — level ${t.lvl} left to break`); }
     } else { flip(col,t); }
     return true;
   }
-  // claimed tiles get real strength so they can't be snatched straight back;
-  // Amanita's Lethality makes its ground especially hard to take.
-  function flip(col,t){ const prev=t.owner; t.owner=col;
-    t.str=(prev?3:2)+gv(col,'lethality'); t.takenTurn=g.turn;
+  // a freshly taken/claimed tile starts at level 1, then deepens naturally each turn.
+  function flip(col,t){ const prev=t.owner; t.owner=col; t.lvl=1; t.takenTurn=g.turn;
     if(prev) logfn(`${who(col)} broke through and took a tile from ${who(prev)}`); }
   function fruit(col){
     if(col.actions<=0) return false;
@@ -148,7 +166,7 @@ function createGame(opts={}){
       const nx=Math.max(0,Math.min(COLS-1,a.x+Math.round((rng()*2-1)*reach)));
       const ny=Math.max(0,Math.min(ROWS-1,a.y+Math.round((rng()*2-1)*reach)));
       const t=g.grid[idx(nx,ny)];
-      if(!t.owner && t.sub!=='barren' && rng()<success){ t.owner=col; t.str=1+gv(col,'lethality'); landed++; }
+      if(!t.owner && t.sub!=='barren' && rng()<success){ t.owner=col; t.lvl=1; landed++; }
     }
     logfn(`${who(col)} fruited — mushrooms drew foragers; ${landed} new colonies took hold far off`);
     return true;
@@ -161,7 +179,11 @@ function createGame(opts={}){
   const who=c=>FACTIONS[c.faction].name;
 
   // ---- turn flow ----
-  function beginTurn(){ for(const c of g.colonies){ c.energy+=Math.round(income(c)); c.actions=ACTIONS_PER_TURN; } }
+  function beginTurn(){ for(const c of g.colonies){
+    const grew=naturalGrowth(c);                 // mycelium creeps outward on its own
+    c.energy=Math.min(ENERGY_CAP, c.energy+Math.round(income(c))); c.actions=ACTIONS_PER_TURN;
+    if(c.isYou && grew) logfn(`Your mycelium spread into ${grew} new tile${grew>1?'s':''}`);
+  } }
   function endTurn(){
     if(g.over) return;
     // AI colonies take their turn
@@ -188,7 +210,8 @@ function createGame(opts={}){
   const api={ state:g, SUB, TRAITS, FACTIONS, upCost, idx, inBounds:inB, neighbors,
     owned, tilesOf, viable, share, frontier, expandCost, income, fruitReach, fruitCost,
     expand, fruit, upgrade, endTurn, beginTurn, who:c=>FACTIONS[c.faction].name,
-    actionsPerTurn:ACTIONS_PER_TURN, traitsFor,
+    actionsPerTurn:ACTIONS_PER_TURN, traitsFor, energyCap:ENERGY_CAP,
+    growthRate:col=>1+gv(col,'mycelium'),
     canFruit:col=>col.actions>0 && col.energy>=fruitCost(col) };
   genMap();
   return api;
